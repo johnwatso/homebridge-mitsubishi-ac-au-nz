@@ -19,8 +19,8 @@ import {MelviewService} from './melviewService';
  * parse the user config and discover/register accessories with Homebridge.
  */
 export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugin {
-    public readonly Service: typeof Service = this.api.hap.Service;
-    public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
+    public readonly Service: typeof Service;
+    public readonly Characteristic: typeof Characteristic;
     public melviewService?: MelviewService;
     public readonly accessories: PlatformAccessory[] = [];
 
@@ -29,6 +29,8 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
         public readonly config: PlatformConfig,
         public readonly api: API,
     ) {
+      this.Service = this.api.hap.Service;
+      this.Characteristic = this.api.hap.Characteristic;
       this.log.debug('Finished initializing platform');
 
       if (!this.config.user || !this.config.password) {
@@ -88,6 +90,9 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
               this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
 
               const s = await this.melviewService!.getStatus(device.unitid);
+              const c = await this.melviewService!.capabilities(device.unitid);
+              existingAccessory.context.device = device;
+              existingAccessory.context.device.capabilities = c;
               existingAccessory.context.device.state = s;
               new MelviewMitsubishiPlatformAccessory(this, existingAccessory);
 
@@ -123,9 +128,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
         }
       } catch(e) {
         this.log.error('Failed to process platform discovery. Fix the problem and restart the service.');
-        this.log.debug(e);
+        this.log.debug(String(e));
       }
     }
 }
-
-

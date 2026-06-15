@@ -1,24 +1,24 @@
-import {CharacteristicValue, Logger, PlatformAccessory, Service} from "homebridge";
-import {MelviewMitsubishiHomebridgePlatform} from "../platform";
-import {Unit} from "../data";
-import {WithUUID} from "hap-nodejs";
-import {CommandPower, CommandRotationSpeed} from "../melviewCommand";
+import {CharacteristicValue, Logger, PlatformAccessory, Service} from 'homebridge';
+import {MelviewMitsubishiHomebridgePlatform} from '../platform';
+import {Unit} from '../data';
+import {WithUUID} from 'hap-nodejs';
 
 export abstract class AbstractService {
     protected service: Service;
     public readonly device: Unit;
     protected constructor(
         protected readonly platform: MelviewMitsubishiHomebridgePlatform,
-        protected readonly accessory: PlatformAccessory
+        protected readonly accessory: PlatformAccessory,
     ) {
         this.device = accessory.context.device;
         if (!this.device.name) {
-            this.device.name = this.getDeviceRoom();
+            this.device.name = this.device.room;
         }
-        this.log.info("Set Device:", this.device.name)
-        this.service = this.accessory.getService(this.getServiceType()) ||
-            this.accessory.addService(this.getServiceType());
-        this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
+        const serviceName = this.getDeviceRoom();
+        this.log.info('Set Device:', serviceName)
+        this.service = this.accessory.getService(this.getServiceType() as any) ||
+            this.accessory.addService(this.getServiceType() as any);
+        this.service.setCharacteristic(this.platform.Characteristic.Name, serviceName);
 
         this.service.getCharacteristic(this.platform.Characteristic.Active)
             .onSet(this.setActive.bind(this))
@@ -27,6 +27,13 @@ export abstract class AbstractService {
         this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed)
             .onSet(this.setRotationSpeed.bind(this))
             .onGet(this.getRotationSpeed.bind(this));
+        this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).props.minValue =
+            this.device.capabilities?.hasautofan === 1 ? 0 : 20;
+        this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).props.maxValue = 100;
+        this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).props.minStep = 20;
+
+        this.service.getCharacteristic(this.platform.Characteristic.StatusFault)
+            .onGet(this.getStatusFault.bind(this));
 
     }
 
@@ -40,6 +47,38 @@ export abstract class AbstractService {
 
     public getService() : Service {
         return this.service!;
+    }
+
+    protected fanSpeedToRotationSpeed(fanSpeed?: number): CharacteristicValue {
+        switch (fanSpeed) {
+            case 0:
+                return 0;
+            case 1:
+                return 20;
+            case 2:
+                return 40;
+            case 3:
+                return 60;
+            case 5:
+                return 80;
+            case 6:
+                return 100;
+            default:
+                return 20;
+        }
+    }
+
+    protected getStatusFault(): CharacteristicValue {
+        const fault = this.device.state?.fault || this.device.capabilities?.fault;
+        return fault && fault !== '0' && fault.toLowerCase() !== 'ok' ?
+            this.platform.Characteristic.StatusFault.GENERAL_FAULT :
+            this.platform.Characteristic.StatusFault.NO_FAULT;
+    }
+
+    public async updateCharacteristics(): Promise<void> {
+        this.service.updateCharacteristic(this.platform.Characteristic.Active, await this.getActive());
+        this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, await this.getRotationSpeed());
+        this.service.updateCharacteristic(this.platform.Characteristic.StatusFault, this.getStatusFault());
     }
 
     abstract setActive(value: CharacteristicValue);

@@ -25,10 +25,14 @@ This plugin allows you to control the basic functionalities of your AC units thr
 - Instant unit response - update the unit directly via LAN interface & cloud Melview.
 - Automatically find all appliances linked to your account;
 - Control power ON/OFF
-- Set mode AUTO, HEAT, COOL
+- Set mode AUTO, HEAT, COOL, FAN
 - Dehumidifier (DRY): **Experimental**, disabled by default, use with caution as 
   this feature is not extensively tested.
 - Set desired temperature
+- Set fan speed, including auto fan
+- Toggle swing on units that report swing support
+- Expose MELView fault state to HomeKit
+- Keep HomeKit state updated when the unit changes outside the Home app
 - Obtain unit status, e.g. power, mode, room temperature and desired temperature.
 
 This project is a hobby project and was created to address the need for a stable plugin
@@ -53,13 +57,9 @@ In a nutshell, if you were able to install the **[Wi-Fi Control App](https://app
 
 Netheless to say, you should have **[Homebridge](https://homebridge.io/)** running.
 
-## Coming Soon
-Some capabilities are not yet available and should be released soon:
-- Fan (FAN) mode;
-- Swing;
-
 ## Known issues
 - **Dry mode**: Does not control fan speed.
+- **Swing mode**: Exposed only for units that report swing support through MELView.
 - **LAN access**: Still requires internet connection, as it authenticates the requests with Melview cloud. It still
 operates way faster than Alexa and Goolge home integration as it has a fast follower command locally removing
 the know lag.
@@ -100,5 +100,3 @@ and **password** is your account password.
 
 ## Questions & Issues
 If you have issues, found a bug or have a question, please open an issue **[here](https://github.com/aurc/melview-mitsubishi-au-nz/issues)**.
-
-

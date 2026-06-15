@@ -46,7 +46,7 @@ export class MelviewService {
       try {
         this.extractCookie(response);
       } catch (e) {
-        this.log.debug(e);
+        this.log.debug(String(e));
         throw new Error ('Failed parse response from Melview - check the network.');
       }
       if (!this.auth?.value) {
@@ -67,7 +67,7 @@ export class MelviewService {
 
       if (this.authWillExpire()) {
         this.login().catch(e => {
-          this.log.error(e);
+          this.log.error(String(e));
           return;
         });
       }
@@ -88,7 +88,7 @@ export class MelviewService {
     public async capabilities(unitID: string): Promise<Capabilities> {
       if (this.authWillExpire()) {
         this.login().catch(e => {
-          this.log.error(e);
+          this.log.error(String(e));
           return;
         });
       }
@@ -114,7 +114,7 @@ export class MelviewService {
       const allComms = [command, ...commandChain].map(c => c.execute()).join(',');
       if (this.authWillExpire()) {
         this.login().catch(e => {
-          this.log.error(e);
+          this.log.error(String(e));
           return;
         });
       }
@@ -155,7 +155,7 @@ export class MelviewService {
     public async getStatus(unitID: string): Promise<State> {
       if (this.authWillExpire()) {
         this.login().catch(e => {
-          this.log.error(e);
+          this.log.error(String(e));
           return;
         });
       }
@@ -199,7 +199,7 @@ export class MelviewService {
           const time = this.auth!.expiryTime(Date.now());
           return (time / (1000 * 60 * 60)) <= 0.0;
         } catch (e) {
-          this.log.error(e);
+          this.log.error(String(e));
           return true;
         }
       }

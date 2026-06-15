@@ -66,17 +66,25 @@ export class CommandTargetHumidifierDehumidifierState extends AbstractCommand {
   }
 }
 
+export class CommandTargetFanState extends AbstractCommand {
+  public execute(): string {
+        this.device.state!.setmode = WorkMode.FAN;
+        return 'MD' + WorkMode.FAN;
+  }
+}
+
 export class CommandRotationSpeed extends AbstractCommand {
   public execute(): string {
-    if (this.value === 0) {
+    const rotationSpeed = Number(this.value);
+    if (rotationSpeed === 0) {
             this.device.state!.setfan = 0;
-    } else if (this.value <= 20) {
+    } else if (rotationSpeed <= 20) {
             this.device.state!.setfan = 1;
-    } else if (this.value <= 40) {
+    } else if (rotationSpeed <= 40) {
             this.device.state!.setfan = 2;
-    } else if (this.value <= 60) {
+    } else if (rotationSpeed <= 60) {
             this.device.state!.setfan = 3;
-    } else if (this.value <= 80) {
+    } else if (rotationSpeed <= 80) {
             this.device.state!.setfan = 5;
     } else {
             this.device.state!.setfan = 6;
@@ -89,5 +97,13 @@ export class CommandTemperature extends AbstractCommand {
   public execute(): string {
         this.device.state!.settemp = this.value as string;
         return 'TS' + this.device.state!.settemp;
+  }
+}
+
+export class CommandSwingMode extends AbstractCommand {
+  public execute(): string {
+    const swing = this.value === this.platform.Characteristic.SwingMode.SWING_ENABLED ? 7 : 0;
+        this.device.state!.airdir = swing;
+        return 'AD' + swing;
   }
 }

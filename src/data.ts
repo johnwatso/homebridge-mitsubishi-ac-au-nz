@@ -68,7 +68,7 @@ export interface Capabilities {
     hasenergy: number;
     hasairauto: number;
     hasairdirh: number;
-    max?: Map<string, Range>;
+    max?: Record<string, Range>;
     time: string;
     error: string;
 }
@@ -82,7 +82,7 @@ export interface State {
     hasairdir: number;
     hasswing: number;
     hasauto: number;
-    max?: Map<string, Range>;
+    max?: Record<string, Range>;
     power: number;
     standby: number;
     setmode: number;

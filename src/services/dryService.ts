@@ -1,13 +1,12 @@
-import {MelviewMitsubishiHomebridgePlatform} from "../platform";
-import {CharacteristicValue, PlatformAccessory, Service} from "homebridge";
-import {WorkMode} from "../data";
-import {AbstractService} from "./abstractService";
+import {MelviewMitsubishiHomebridgePlatform} from '../platform';
+import {CharacteristicValue, PlatformAccessory, Service} from 'homebridge';
+import {WorkMode} from '../data';
+import {AbstractService} from './abstractService';
 import {
     CommandPower, CommandRotationSpeed,
-    CommandTargetHeaterCoolerState,
-    CommandTargetHumidifierDehumidifierState
-} from "../melviewCommand";
-import {WithUUID} from "hap-nodejs";
+    CommandTargetHumidifierDehumidifierState,
+} from '../melviewCommand';
+import {WithUUID} from 'hap-nodejs';
 
 export class DryService extends AbstractService {
     public constructor(
@@ -32,16 +31,9 @@ export class DryService extends AbstractService {
 
     async getActive(): Promise<CharacteristicValue> {
         this.log.info('GET DRY ACITVE [', this.getDeviceName(), '] =', this.device.state!.power, 'DRY =', this.device.state?.setmode);
-        switch (this.device.state?.setmode) {
-            case WorkMode.DRY:
-            case WorkMode.COOL:
-            case WorkMode.HEAT:
-                return this.device.state!.power == 0 ?
-                    this.platform.Characteristic.Active.INACTIVE :
-                    this.platform.Characteristic.Active.ACTIVE;
-            default:
-                return this.platform.Characteristic.Active.INACTIVE;
-        }
+        return this.device.state?.power === 1 && this.device.state?.setmode === WorkMode.DRY ?
+            this.platform.Characteristic.Active.ACTIVE :
+            this.platform.Characteristic.Active.INACTIVE;
     }
 
     async setActive(value: CharacteristicValue) {
@@ -59,7 +51,7 @@ export class DryService extends AbstractService {
     }
 
     protected getDeviceRoom(): string {
-        return this.device.room + " Dehumidifier";
+        return this.device.room + ' Dehumidifier';
     }
 
     protected getDeviceName(): string {
@@ -98,20 +90,13 @@ export class DryService extends AbstractService {
     }
 
     async getRotationSpeed(): Promise<CharacteristicValue> {
-        const fan = this.device.state!.setfan;
-        switch (fan) {
-            case 1:
-                return 20;
-            case 2:
-                return 40;
-            case 3:
-                return 60;
-            case 5:
-                return 80;
-            case 6:
-                return 100;
-            default:
-                return 20;
-        }
+        return this.fanSpeedToRotationSpeed(this.device.state?.setfan);
+    }
+
+    public async updateCharacteristics(): Promise<void> {
+        await super.updateCharacteristics();
+        const c = this.platform.Characteristic;
+        this.service.updateCharacteristic(c.CurrentHumidifierDehumidifierState, await this.getCurrentHumidifierDehumidifierState());
+        this.service.updateCharacteristic(c.TargetHumidifierDehumidifierState, await this.getTargetHumidifierDehumidifierState());
     }
 }
