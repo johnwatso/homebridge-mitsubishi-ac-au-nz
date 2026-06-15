@@ -20,11 +20,11 @@ This project is a modernized fork of the original [`aurc/melview-mitsubishi-au-n
 Published on npm as [`homebridge-mitsubishi-ac-au-nz`](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz).
 
 ## About
-Homebridge Mitsubishi AC AU/NZ brings Mitsubishi Electric Wi-Fi Control air conditioners and heat pumps into Apple Home via Homebridge.
+Homebridge Mitsubishi AC AU/NZ brings Mitsubishi Electric Wi-Fi Control air conditioners and heat pumps into Apple Home through Homebridge.
 
 The plugin discovers units from your Mitsubishi Wi-Fi Control / MELView account, exposes each unit as a HomeKit heater-cooler accessory, and adds supported fan controls so the Home app feels closer to a native AC controller.
 
-Day-to-day commands are MELView-assisted: the plugin authenticates with MELView, sends the command through MELView, and then uses the returned local command token to make a fast LAN request directly to the unit where available. This is not fully offline local control, but it can make commands feel much more responsive than cloud-only integrations.
+Day-to-day commands are MELView-assisted. The plugin authenticates with MELView, sends the command through MELView, and then uses the returned local command token to make a fast LAN request directly to the unit where available. This is not fully offline local control, but it can make commands feel much more responsive than cloud-only integrations.
 
 ## Supported Hardware
 This plugin is intended for Mitsubishi Electric air conditioners and heat pumps in Australia and New Zealand that work with the Mitsubishi Electric **Wi-Fi Control** app.
