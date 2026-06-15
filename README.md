@@ -1,103 +1,128 @@
+<h1 align="center">Homebridge Mitsubishi AC AU/NZ</h1>
 
 <p align="center">
-
-<img src="https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/raw/master/assets/Logo.png">
-
+  <a href="https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz"><img src="https://img.shields.io/npm/v/homebridge-mitsubishi-ac-au-nz.svg" alt="npm version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D18.15-339933.svg" alt="Node.js"></a>
+  <a href="https://homebridge.io/"><img src="https://img.shields.io/badge/homebridge-%3E%3D1.8-purple.svg" alt="Homebridge"></a>
+  <a href="#homekit-support"><img src="https://img.shields.io/badge/HomeKit-AC%20%2B%20fan-0f7fff.svg" alt="HomeKit AC and fan"></a>
+  <a href="#network-notes"><img src="https://img.shields.io/badge/control-MELView%20%2B%20LAN-success.svg" alt="MELView assisted LAN"></a>
 </p>
 
-# Homebridge Mitsubishi AC AU/NZ
+<p align="center">
+  <img src="assets/homebridge-mitsubishi-ac-au-nz.png" alt="Homebridge Mitsubishi AC AU/NZ" width="320">
+</p>
 
-[![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
+Homebridge plugin for Mitsubishi Electric Wi-Fi Control air conditioners and heat pumps in Australia and New Zealand, with native-feeling HomeKit controls for heat, cool, auto, fan speed, swing, and optional dry mode.
 
-[![npm](https://img.shields.io/npm/v/homebridge-mitsubishi-ac-au-nz/latest?label=latest)](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz)
-[![GitHub release](https://img.shields.io/github/release/johnwatso/homebridge-mitsubishi-ac-au-nz.svg)](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases)
-[![npm](https://img.shields.io/npm/dt/homebridge-mitsubishi-ac-au-nz)](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz)
+This project is a modernized fork of the original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) plugin, updated for current Node/Homebridge versions and expanded HomeKit support.
 
-[![Github CI](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/actions/workflows/build.yml/badge.svg)](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/actions)
-[![Github CD](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/actions/workflows/release.yml/badge.svg)](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/actions)
-[![Hex.pm](https://img.shields.io/hexpm/l/plug)](https://www.apache.org/licenses/LICENSE-2.0)
+Published on npm as [`homebridge-mitsubishi-ac-au-nz`](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz).
 
-Use this plugin to integrate your Mitsubishi air conditioner and heat pump appliances with Apple's HomeKit using Homebridge.
+## About
+Homebridge Mitsubishi AC AU/NZ brings Mitsubishi Electric Wi-Fi Control air conditioners and heat pumps into Apple Home via Homebridge.
 
-This project is a modernized fork of the original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) Homebridge plugin, updated for current Node/Homebridge versions and expanded HomeKit support.
+The plugin discovers units from your Mitsubishi Wi-Fi Control / MELView account, exposes each unit as a HomeKit heater-cooler accessory, and adds supported fan controls so the Home app feels closer to a native AC controller.
 
-## Overview
+Day-to-day commands are MELView-assisted: the plugin authenticates with MELView, sends the command through MELView, and then uses the returned local command token to make a fast LAN request directly to the unit where available. This is not fully offline local control, but it can make commands feel much more responsive than cloud-only integrations.
 
-This plugin allows you to control the basic functionalities of your AC units through the home app and Siri. The features include:
-- Instant unit response - update the unit directly via LAN interface & cloud Melview.
-- Automatically find all appliances linked to your account;
-- Control power ON/OFF
-- Set mode AUTO, HEAT, COOL, FAN
-- Dehumidifier (DRY): **Experimental**, disabled by default, use with caution as 
-  this feature is not extensively tested.
-- Set desired temperature
-- Set fan speed, including auto fan
-- Toggle swing on units that report swing support
-- Keep HomeKit state updated when the unit changes outside the Home app
-- Obtain unit status, e.g. power, mode, room temperature and desired temperature.
+## Supported Hardware
+This plugin is intended for Mitsubishi Electric air conditioners and heat pumps in Australia and New Zealand that work with the Mitsubishi Electric **Wi-Fi Control** app.
 
-This project is a hobby project and was created to address the need for a stable plugin
-in AU/NZ to control Mitsubishi Air Conditioners. It was possible due to the great
-reverse engineering effort done by these folks: [NovaGL/diy-melview](https://github.com/NovaGL/diy-melview).
+Known working combinations from the original project:
 
-Also note that the [Homebridge](https://homebridge.io/) put together excellent developer
-documentation which made it possible to get up and running quickly (e.g. 
-[plugin-temeplate](https://github.com/homebridge/homebridge-plugin-template))!
+| Indoor Unit | Wi-Fi Module |
+| :--- | :--- |
+| MSZ-GL71VGD | MAC-568IF-E |
+| MSZ-GL35VGD | MAC-568IF-E |
+| MSZ-AP25VGD | MAC-568IF-E |
 
-## Compatibility & Pre-requisites
+If your unit appears in the Mitsubishi Wi-Fi Control app, it is a good candidate for this plugin.
 
-It should work with most modern Mitsubishi Electric Airconditioner units that are Wi-Fi capable. 
-This plugin has been developed and tested against the following products:
-| Model                                                                                              | Wi-Fi Module                                    |
-| -------------------------------------------------------------------------------------------------- | ----------------------------------------------- | 
-| [MSZ-GL71VGD](https://www.mitsubishielectric.com.au/assets/LEG/JG79A991H01-UM.pdf)                 | [MAC-568IF-E](https://www.mitsubishielectric.com.au/assets/LEG/MAC-568IF-E.pdf)   |
-| [MSZ-GL35VGD](https://www.mitsubishielectric.com.au/assets/LEG/JG79A991H01-UM.pdf)                 | [MAC-568IF-E](https://www.mitsubishielectric.com.au/assets/LEG/MAC-568IF-E.pdf)   |
-| [MSZ-AP25VGD](https://www.mitsubishielectric.com.au/assets/LEG/MSZ-AP-User-Manual-JG79Y333H01.pdf) | [MAC-568IF-E](https://www.mitsubishielectric.com.au/assets/LEG/MAC-568IF-E.pdf)   |
-
-In a nutshell, if you were able to install the **[Wi-Fi Control App](https://apps.apple.com/au/app/mitsubishi-wi-fi-control/id796225889#?platform=iphone)** and operate the unit, this plugin is for you!
-
-Netheless to say, you should have **[Homebridge](https://homebridge.io/)** running.
-
-## Known issues
-- **Dry mode**: Does not control fan speed.
-- **Swing mode**: Exposed only for units that report swing support through MELView.
-- **LAN access**: Still requires internet connection, as it authenticates the requests with Melview cloud. It still
-operates way faster than Alexa and Goolge home integration as it has a fast follower command locally removing
-the know lag.
-
+## HomeKit Support
+- **Heater/Cooler Accessory:** Appears in Apple Home as a HomeKit heater-cooler service.
+- **Power Control:** Turn units on and off.
+- **Mode Control:** Heat, cool, and auto where supported by the unit.
+- **Fan-Only Mode:** Exposes fan-only operation as a linked HomeKit fan service.
+- **Fan Speed:** Set fan speed from Apple Home, including auto fan where supported.
+- **Swing:** Toggle swing for units that report swing support through MELView.
+- **Target Temperature:** Set heating and cooling target temperatures using the unit's supported ranges.
+- **Room Temperature:** Reports the current room temperature from MELView.
+- **Optional Dry Mode:** Can expose dry/dehumidifier mode when enabled in config and supported by the unit.
+- **State Updates:** Polls MELView so changes made outside HomeKit are reflected back into Apple Home.
+- **Siri, Scenes, and Automations:** Works with standard Apple Home automations through Homebridge.
 
 ## Installation
+Install from npm: [homebridge-mitsubishi-ac-au-nz](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz)
 
-### Through Homebridge Config UI (recommeded)
-It's highly recommended that you use the [Homebridge Config UI X](https://github.com/oznu/homebridge-config-ui-x). 
-1. Access the settings and configure the credentials as per the required fields.
-2. Save and restart homebridge.
-3. All units in your network should be automatically recognised. Open your Home App and allocate them to their respective rooms.
+1. Install Homebridge.
+2. Search for `homebridge-mitsubishi-ac-au-nz` in Homebridge Config UI.
+3. Install the plugin.
+4. Enter your Mitsubishi Wi-Fi Control account credentials.
+5. Restart Homebridge.
 
-### Through CLI
+## Configuration
+Add the following to your Homebridge `config.json`:
 
-You can install the package manually by issuing:
-````
-npm install -g homebridge-mitsubishi-ac-au-nz
-````
-and configuring the plugin file `config.json` as:
-````
+```json
 {
-    "bridge": {
-        //...
-    },
-    "accessories": [],
-    "platforms": [
-        {
-            "user": "user@domain.com",
-            "password": "yourpassword",
-            "platform": "MitsubishiAUNZ"
-        }
-    ]
+  "platform": "MitsubishiAUNZ",
+  "user": "user@example.com",
+  "password": "your-password",
+  "dry": false
 }
-````
-where **user** is your user name, typically the email you used to register with the app 
-and **password** is your account password.
+```
 
-## Questions & Issues
-If you have issues, found a bug or have a question, please open an issue **[here](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/issues)**.
+| Setting | Required | Description |
+| :--- | :--- | :--- |
+| `platform` | Yes | Must be `MitsubishiAUNZ`. |
+| `user` | Yes | Mitsubishi Wi-Fi Control / MELView account email. |
+| `password` | Yes | Mitsubishi Wi-Fi Control / MELView account password. |
+| `dry` | No | Set to `true` to expose supported units as a HomeKit dehumidifier service. Defaults to `false`. |
+
+Keep the Mitsubishi platform on the main bridge unless you specifically want it isolated. No child bridge is required.
+
+## Network Notes
+This plugin is **not fully local-only**.
+
+It uses MELView for login, discovery, status polling, and command authorization. For commands, it asks MELView for a local command token and then sends a follow-up request to the unit on your LAN:
+
+```text
+http://<unit-local-ip>/smart
+```
+
+For best results, your Homebridge host should be able to reach the Wi-Fi module's local IP address on your LAN. If your Homebridge host and heat pump are on different VLANs, allow traffic from Homebridge to the heat pump module.
+
+## Known Limitations
+- **Internet required:** MELView authentication is still required for normal operation.
+- **Dry mode:** Optional and less thoroughly tested than heat/cool/fan.
+- **Swing:** Exposed only for units that report swing support through MELView.
+- **Vane direction:** Currently exposed as swing on/off, not precise vertical or horizontal vane positions.
+- **Outdoor temperature:** Not exposed yet; MELView data varies between units.
+
+## Development
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run checks:
+
+```bash
+npm run build
+npm run lint
+npm audit
+```
+
+For local Homebridge testing:
+
+```bash
+npm link
+```
+
+## Credits
+This plugin builds on the original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) project and the MELView reverse-engineering notes from [`NovaGL/diy-melview`](https://github.com/NovaGL/diy-melview).
+
+## License
+Apache-2.0
