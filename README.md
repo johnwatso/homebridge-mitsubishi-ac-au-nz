@@ -1,23 +1,25 @@
 
 <p align="center">
 
-<img src="https://github.com/aurc/melview-mitsubishi-au-nz/raw/master/assets/Logo.png">
+<img src="https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/raw/master/assets/Logo.png">
 
 </p>
 
-# Homebridge Melview AU/NZ Airconditioners
+# Homebridge Mitsubishi AC AU/NZ
 
 [![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
 
-[![npm](https://img.shields.io/npm/v/homebridge-airconditioner-mitsubishi-au-nz/latest?label=latest)](https://www.npmjs.com/package/homebridge-airconditioner-mitsubishi-au-nz)
-[![GitHub release](https://img.shields.io/github/release/aurc/melview-mitsubishi-au-nz.svg)](https://github.com/aurc/melview-mitsubishi-au-nz/releases)
-[![npm](https://img.shields.io/npm/dt/homebridge-airconditioner-mitsubishi-au-nz)](https://www.npmjs.com/package/homebridge-airconditioner-mitsubishi-au-nz)
+[![npm](https://img.shields.io/npm/v/homebridge-mitsubishi-ac-au-nz/latest?label=latest)](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz)
+[![GitHub release](https://img.shields.io/github/release/johnwatso/homebridge-mitsubishi-ac-au-nz.svg)](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases)
+[![npm](https://img.shields.io/npm/dt/homebridge-mitsubishi-ac-au-nz)](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz)
 
-[![Github CI](https://github.com/aurc/melview-mitsubishi-au-nz/actions/workflows/build.yml/badge.svg)](https://github.com/aurc/melview-mitsubishi-au-nz/actions)
-[![Github CD](https://github.com/aurc/melview-mitsubishi-au-nz/actions/workflows/release.yml/badge.svg)](https://github.com/aurc/melview-mitsubishi-au-nz/actions)
+[![Github CI](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/actions/workflows/build.yml/badge.svg)](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/actions)
+[![Github CD](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/actions/workflows/release.yml/badge.svg)](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/actions)
 [![Hex.pm](https://img.shields.io/hexpm/l/plug)](https://www.apache.org/licenses/LICENSE-2.0)
 
-Use this plugin to integrate your Mitsubishi Airconditioner appliances with Apple's HomeKit using Homebridge.
+Use this plugin to integrate your Mitsubishi air conditioner and heat pump appliances with Apple's HomeKit using Homebridge.
+
+This project is a modernized fork of the original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) Homebridge plugin, updated for current Node/Homebridge versions and expanded HomeKit support.
 
 ## Overview
 
@@ -77,7 +79,7 @@ It's highly recommended that you use the [Homebridge Config UI X](https://github
 
 You can install the package manually by issuing:
 ````
-npm install -g homebridge-airconditioner-mitsubishi-au-nz
+npm install -g homebridge-mitsubishi-ac-au-nz
 ````
 and configuring the plugin file `config.json` as:
 ````
@@ -99,4 +101,4 @@ where **user** is your user name, typically the email you used to register with 
 and **password** is your account password.
 
 ## Questions & Issues
-If you have issues, found a bug or have a question, please open an issue **[here](https://github.com/aurc/melview-mitsubishi-au-nz/issues)**.
+If you have issues, found a bug or have a question, please open an issue **[here](https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/issues)**.

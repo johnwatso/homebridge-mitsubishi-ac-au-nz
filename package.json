@@ -1,6 +1,6 @@
 {
-  "displayName": "AU/NZ Mitsubishi Air-Conditioners Bridge",
-  "name": "homebridge-airconditioner-mitsubishi-au-nz",
+  "displayName": "Mitsubishi AC AU/NZ",
+  "name": "homebridge-mitsubishi-ac-au-nz",
   "version": "1.2.6",
   "description": "Control your Mitsubishi Aircon units with Homebridge and Apple HomeKit",
   "license": "Apache-2.0",
@@ -10,10 +10,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/aurc/melview-mitsubishi-au-nz.git"
+    "url": "git://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz.git"
   },
   "bugs": {
-    "url": "https://github.com/aurc/melview-mitsubishi-au-nz/issues"
+    "url": "https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/issues"
   },
   "engines": {
     "node": ">=18.15.0",
