@@ -32,9 +32,6 @@ export abstract class AbstractService {
         this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).props.maxValue = 100;
         this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).props.minStep = 20;
 
-        this.service.getCharacteristic(this.platform.Characteristic.StatusFault)
-            .onGet(this.getStatusFault.bind(this));
-
     }
 
     protected abstract getServiceType<T extends WithUUID<typeof Service>>() : T
@@ -68,17 +65,9 @@ export abstract class AbstractService {
         }
     }
 
-    protected getStatusFault(): CharacteristicValue {
-        const fault = this.device.state?.fault || this.device.capabilities?.fault;
-        return fault && fault !== '0' && fault.toLowerCase() !== 'ok' ?
-            this.platform.Characteristic.StatusFault.GENERAL_FAULT :
-            this.platform.Characteristic.StatusFault.NO_FAULT;
-    }
-
     public async updateCharacteristics(): Promise<void> {
         this.service.updateCharacteristic(this.platform.Characteristic.Active, await this.getActive());
         this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, await this.getRotationSpeed());
-        this.service.updateCharacteristic(this.platform.Characteristic.StatusFault, this.getStatusFault());
     }
 
     abstract setActive(value: CharacteristicValue);

@@ -33,7 +33,6 @@ This plugin allows you to control the basic functionalities of your AC units thr
 - Set desired temperature
 - Set fan speed, including auto fan
 - Toggle swing on units that report swing support
-- Expose MELView fault state to HomeKit
 - Keep HomeKit state updated when the unit changes outside the Home app
 - Obtain unit status, e.g. power, mode, room temperature and desired temperature.
 
