@@ -20,6 +20,17 @@ A modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/m
 > [!NOTE]
 > **Region:** Built for Mitsubishi Electric units in Australia and New Zealand that pair with the **Mitsubishi Wi-Fi Control** app (MELView). If your unit shows up in that app, it's a good candidate.
 
+## Why this fork?
+The original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) pioneered MELView control but left gaps this fork closes:
+
+- **Fan speed and swing actually work** — the original couldn't control fan speed and listed swing as "coming soon."
+- **It feels instant** — tiles update the moment you send a command, instead of lagging until the next poll.
+- **Built for current Homebridge** — targets Homebridge 2.0 and Node 22/24, so it keeps working on up-to-date installs.
+- **Harder to break** — discovery won't drop your accessories on a flaky MELView response, polling is gentle on the API, and re-authentication is handled cleanly.
+- **More to see** — an optional outdoor-temperature tile, capability-aware controls, and a tested codebase.
+
+Full breakdown: [what changed vs the original](docs/modernization.md).
+
 ## Features
 - **Native heater-cooler tile** — power, heat/cool/auto (matched to each unit's real capabilities).
 - **Fan speed** — slider steps matched to the unit's actual fan stages, with auto fan where supported.
