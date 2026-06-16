@@ -1,6 +1,6 @@
 import {MelviewMitsubishiHomebridgePlatform} from '../platform';
 import {CharacteristicValue, PlatformAccessory, Service} from 'homebridge';
-import {applyCommandResponse, CommandResponse, WorkMode} from '../data';
+import {WorkMode} from '../data';
 import {AbstractService} from './abstractService';
 import {
     CommandPower,
@@ -91,19 +91,6 @@ export class HeatCoolService extends AbstractService {
                 this.platform.Characteristic.Active.INACTIVE:
                 this.platform.Characteristic.Active.ACTIVE;
         }
-    }
-
-    /**
-     * Apply the authoritative state MELView returned for a command so the
-     * accessory snaps to the new state immediately instead of waiting for the
-     * next poll.
-     */
-    private async applyResponse(response?: CommandResponse): Promise<void> {
-        if (!response || !this.device.state) {
-            return;
-        }
-        applyCommandResponse(this.device.state, response);
-        await this.updateCharacteristics();
     }
 
     async setActive(value: CharacteristicValue) {

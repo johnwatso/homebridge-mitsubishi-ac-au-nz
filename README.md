@@ -115,7 +115,11 @@ For best results, your Homebridge host should be able to reach the Wi-Fi module'
 - **Dry mode:** Optional and less thoroughly tested than heat/cool.
 - **Swing:** Exposed only for units that report swing support through MELView.
 - **Vane direction:** Currently exposed as swing on/off, not precise vertical or horizontal vane positions.
-- **Outdoor temperature:** Not exposed yet; MELView data varies between units.
+- **Outdoor temperature:** Optional and off by default; MELView data varies between units, so implausible/placeholder readings are hidden rather than shown.
+- **Energy reporting:** Not exposed yet — see Roadmap.
+
+## Roadmap
+- **Energy reporting (coming soon):** Many units report energy support via MELView, but Apple Home has no native accessory-publishable energy characteristic today. iOS 26's energy features (EnergyKit) are app-layer only, so exposing energy now would mean non-native custom characteristics — which this plugin deliberately avoids. We're waiting on a genuinely native HomeKit energy surface (anticipated around iOS 27) before wiring this up. Units that advertise energy support are logged in the meantime.
 
 ## Development
 Install dependencies:

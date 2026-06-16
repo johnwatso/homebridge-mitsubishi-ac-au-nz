@@ -13,6 +13,7 @@ const CAPABILITIES_SERVICE = 'unitcapabilities.aspx';
 
 export class MelviewService {
     private auth?: Cookie;
+    private loginInFlight?: Promise<Account>;
 
     constructor(
         public readonly log: Logger,
@@ -58,19 +59,28 @@ export class MelviewService {
     }
 
     /**
+     * Ensure a valid auth token before issuing a request. Awaits a (re)login
+     * when the token is missing or about to expire, and de-dupes concurrent
+     * callers onto a single in-flight login so many polling units don't trigger
+     * a login stampede.
+     */
+    private async ensureAuth(): Promise<void> {
+      if (this.auth && !this.authWillExpire()) {
+        return;
+      }
+      if (!this.loginInFlight) {
+        this.loginInFlight = this.login().finally(() => {
+          this.loginInFlight = undefined;
+        });
+      }
+      await this.loginInFlight;
+    }
+
+    /**
      * Queries the entire inventory of accessories listed in Melview for the account.
      */
     public async discover(): Promise<Building[] | undefined> {
-      if (!this.auth) {
-        return;
-      }
-
-      if (this.authWillExpire()) {
-        this.login().catch(e => {
-          this.log.error(String(e));
-          return;
-        });
-      }
+      await this.ensureAuth();
 
       const response = await fetch(URL + ROOMS_SERVICE, {
         method: 'POST',
@@ -86,12 +96,7 @@ export class MelviewService {
      * @param unitID is the unit identifier
      */
     public async capabilities(unitID: string): Promise<Capabilities> {
-      if (this.authWillExpire()) {
-        this.login().catch(e => {
-          this.log.error(String(e));
-          return;
-        });
-      }
+      await this.ensureAuth();
 
       const response = await fetch(URL + CAPABILITIES_SERVICE, {
         method: 'POST',
@@ -112,12 +117,7 @@ export class MelviewService {
      */
     public async command(command : Command, ...commandChain: Command[]): Promise<CommandResponse> {
       const allComms = [command, ...commandChain].map(c => c.execute()).join(',');
-      if (this.authWillExpire()) {
-        this.login().catch(e => {
-          this.log.error(String(e));
-          return;
-        });
-      }
+      await this.ensureAuth();
 
       const req = JSON.stringify({
         unitid: command.getUnitID(),
@@ -154,12 +154,7 @@ export class MelviewService {
      * @param unitID is the unit identifier
      */
     public async getStatus(unitID: string): Promise<State> {
-      if (this.authWillExpire()) {
-        this.login().catch(e => {
-          this.log.error(String(e));
-          return;
-        });
-      }
+      await this.ensureAuth();
 
       const response = await fetch(URL + COMMAND_SERVICE, {
         method: 'POST',

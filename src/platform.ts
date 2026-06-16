@@ -99,44 +99,51 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
             this.log.debug('IDS:', device.unitid, uuid);
             const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
 
-            if (existingAccessory) {
-              // the accessory already exists
-              this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
+            // Isolate each unit: a failure setting one up (e.g. a transient
+            // status/capabilities error) must not abort discovery for the rest.
+            // The UUID was already recorded above, so an errored existing unit is
+            // still protected from stale-removal.
+            try {
+              if (existingAccessory) {
+                // the accessory already exists
+                this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
 
-              const s = await this.melviewService!.getStatus(device.unitid);
-              const c = await this.melviewService!.capabilities(device.unitid);
-              existingAccessory.context.device = device;
-              existingAccessory.context.dry = Boolean(this.config.dry);
-              existingAccessory.context.outdoorTemperature = Boolean(this.config.outdoorTemperature);
-              existingAccessory.context.device.capabilities = c;
-              existingAccessory.context.device.state = s;
-              new MelviewMitsubishiPlatformAccessory(this, existingAccessory);
-            } else {
-              // the accessory does not yet exist, so we need to create it
-              this.log.info('Adding new accessory:', device.room, '[', device.unitid, ']:', uuid);
+                const s = await this.melviewService!.getStatus(device.unitid);
+                const c = await this.melviewService!.capabilities(device.unitid);
+                existingAccessory.context.device = device;
+                existingAccessory.context.dry = Boolean(this.config.dry);
+                existingAccessory.context.outdoorTemperature = Boolean(this.config.outdoorTemperature);
+                existingAccessory.context.device.capabilities = c;
+                existingAccessory.context.device.state = s;
+                new MelviewMitsubishiPlatformAccessory(this, existingAccessory);
+              } else {
+                // the accessory does not yet exist, so we need to create it
+                this.log.info('Adding new accessory:', device.room, '[', device.unitid, ']:', uuid);
 
-              const c = await this.melviewService!.capabilities(device.unitid);
-              const s = await this.melviewService!.getStatus(device.unitid);
+                const c = await this.melviewService!.capabilities(device.unitid);
+                const s = await this.melviewService!.getStatus(device.unitid);
 
-              device.capabilities = c;
-              device.state = s;
-              // create a new accessory
-              //this.api.registerPlatformAccessories()
-              const accessory = new this.api.platformAccessory(device.room, uuid, Categories.AIR_CONDITIONER);
+                device.capabilities = c;
+                device.state = s;
+                const accessory = new this.api.platformAccessory(device.room, uuid, Categories.AIR_CONDITIONER);
 
-              // store a copy of the device object in the `accessory.context`
-              // the `context` property can be used to store any data about the accessory you may need
-              accessory.context.device = device;
-              accessory.context.dry = Boolean(this.config.dry);
-              accessory.context.outdoorTemperature = Boolean(this.config.outdoorTemperature);
+                // store a copy of the device object in the `accessory.context`
+                // the `context` property can be used to store any data about the accessory you may need
+                accessory.context.device = device;
+                accessory.context.dry = Boolean(this.config.dry);
+                accessory.context.outdoorTemperature = Boolean(this.config.outdoorTemperature);
 
-              // create the accessory handler for the newly create accessory
-              // this is imported from `platformAccessory.ts`
-              new MelviewMitsubishiPlatformAccessory(this, accessory);
+                // create the accessory handler for the newly create accessory
+                // this is imported from `platformAccessory.ts`
+                new MelviewMitsubishiPlatformAccessory(this, accessory);
 
-              // link the accessory to your platform
-              this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-              this.accessories.push(accessory);
+                // link the accessory to your platform
+                this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+                this.accessories.push(accessory);
+              }
+            } catch (e) {
+              this.log.error('Failed to set up unit', device.room, '[', device.unitid, '] - skipping for now.');
+              this.log.debug(String(e));
             }
           }
         }

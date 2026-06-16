@@ -1,6 +1,6 @@
 import {CharacteristicValue, Logger, PlatformAccessory, Service} from 'homebridge';
 import {MelviewMitsubishiHomebridgePlatform} from '../platform';
-import {Unit} from '../data';
+import {applyCommandResponse, CommandResponse, Unit} from '../data';
 import {fanCodeToRotationSpeed, fanMinRotation, fanRotationStep} from '../fanMapping';
 
 export abstract class AbstractService {
@@ -46,6 +46,19 @@ export abstract class AbstractService {
 
     public getService() : Service {
         return this.service!;
+    }
+
+    /**
+     * Apply the authoritative state MELView returned for a command so the
+     * accessory snaps to the new state immediately instead of waiting for the
+     * next poll.
+     */
+    protected async applyResponse(response?: CommandResponse): Promise<void> {
+        if (!response || !this.device.state) {
+            return;
+        }
+        applyCommandResponse(this.device.state, response);
+        await this.updateCharacteristics();
     }
 
     protected fanSpeedToRotationSpeed(fanSpeed?: number): CharacteristicValue {

@@ -53,6 +53,17 @@ export class MelviewMitsubishiPlatformAccessory {
         this.removeService(this.platform.Service.Fanv2);
 
         /*********************************************************
+         * Energy reporting (groundwork only)
+         * No native Apple Home HAP characteristic exists for AC energy yet;
+         * iOS 26's energy features are EnergyKit (app-layer), not accessory
+         * published. See docs/energy-reporting.md. Log capability for now.
+         *********************************************************/
+        if (device.capabilities?.hasenergy === 1) {
+          this.platform.log.info('ENERGY Capability:', device.room,
+            ' [REPORTED BY UNIT - native HomeKit support pending, see docs/energy-reporting.md]');
+        }
+
+        /*********************************************************
          * Outdoor Temperature Capability
          * https://developers.homebridge.io/#/service/TemperatureSensor
          *********************************************************/
@@ -67,28 +78,56 @@ export class MelviewMitsubishiPlatformAccessory {
         /*********************************************************
          * Polling for state change
          *********************************************************/
-
-        const pollingInterval = setInterval(() => {
-          this.platform.melviewService?.getStatus(
-            this.accessory.context.device.unitid)
-            .then(s => {
-              // this.platform.log.debug('Updating Accessory State:',
-              //   this.accessory.context.device.unitid);
-              this.accessory.context.device.state = s;
-              this.reportFault(s);
-              this.acService.updateCharacteristics().finally();
-              this.dryService?.updateCharacteristics().finally();
-              this.outdoorTemperatureService?.updateCharacteristics().finally();
-            })
-            .catch(e => {
-              this.platform.log.error('Unable to find accessory status. Check the network');
-              this.platform.log.debug(String(e));
-            });
-        }, 5000);
-        this.platform.registerPollingInterval(pollingInterval);
+        this.startPolling();
     }
 
     private lastFaultKey?: string;
+
+    // Polling defaults (seconds). The poll only catches *external* changes now
+    // that commands self-refresh, so it can be relaxed; clamped to sane bounds.
+    private static readonly DEFAULT_POLL_SECONDS = 10;
+    private static readonly MIN_POLL_SECONDS = 5;
+    private static readonly MAX_POLL_SECONDS = 120;
+
+    private resolvePollIntervalMs(): number {
+      const configured = Number(this.platform.config.pollInterval);
+      const seconds = Number.isFinite(configured) && configured > 0 ?
+        configured : MelviewMitsubishiPlatformAccessory.DEFAULT_POLL_SECONDS;
+      const clamped = Math.min(
+        Math.max(seconds, MelviewMitsubishiPlatformAccessory.MIN_POLL_SECONDS),
+        MelviewMitsubishiPlatformAccessory.MAX_POLL_SECONDS,
+      );
+      return clamped * 1000;
+    }
+
+    private startPolling(): void {
+      const intervalMs = this.resolvePollIntervalMs();
+      // Stagger units with a random initial offset so they don't all hit MELView
+      // on the same tick (avoids self-inflicted rate-limiting on multi-unit accounts).
+      const jitterMs = Math.floor(Math.random() * intervalMs);
+      const startTimeout = setTimeout(() => {
+        this.pollOnce();
+        const pollingInterval = setInterval(() => this.pollOnce(), intervalMs);
+        this.platform.registerPollingInterval(pollingInterval);
+      }, jitterMs);
+      this.platform.registerPollingInterval(startTimeout);
+    }
+
+    private pollOnce(): void {
+      this.platform.melviewService?.getStatus(
+        this.accessory.context.device.unitid)
+        .then(s => {
+          this.accessory.context.device.state = s;
+          this.reportFault(s);
+          this.acService.updateCharacteristics().finally();
+          this.dryService?.updateCharacteristics().finally();
+          this.outdoorTemperatureService?.updateCharacteristics().finally();
+        })
+        .catch(e => {
+          this.platform.log.error('Unable to find accessory status. Check the network');
+          this.platform.log.debug(String(e));
+        });
+    }
 
     private hasOutdoorTemperature(device: Unit): boolean {
       return Number.isFinite(Number.parseFloat(device.state?.outdoortemp ?? ''));

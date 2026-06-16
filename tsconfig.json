@@ -16,6 +16,9 @@
     "esModuleInterop": true,
     "noImplicitAny": false
   },
+  "ts-node": {
+    "transpileOnly": true
+  },
   "include": [
     "src/"
   ],

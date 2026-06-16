@@ -37,12 +37,12 @@ export class DryService extends AbstractService {
 
     async setActive(value: CharacteristicValue) {
         this.log.info('Setting', this.getDeviceName(), '=', value === 0 ? 'OFF' : 'ON');
-        this.platform.melviewService?.command(
+        await this.applyResponse(await this.platform.melviewService?.command(
             new CommandPower(value, this.device, this.platform),
             new CommandTargetHumidifierDehumidifierState(
                 this.platform.Characteristic.TargetHumidifierDehumidifierState.DEHUMIDIFIER,
                 this.device,
-                this.platform));
+                this.platform)));
     }
 
     protected getServiceType(): typeof Service {
@@ -74,8 +74,8 @@ export class DryService extends AbstractService {
 
     async setTargetHumidifierDehumidifierState(value: CharacteristicValue) {
         this.log.info('Set ', this.device.room, '=', 'DRY');
-        this.platform.melviewService?.command(
-            new CommandTargetHumidifierDehumidifierState(value, this.device, this.platform));
+        await this.applyResponse(await this.platform.melviewService?.command(
+            new CommandTargetHumidifierDehumidifierState(value, this.device, this.platform)));
     }
 
     async getTargetHumidifierDehumidifierState(): Promise<CharacteristicValue> {
@@ -84,8 +84,8 @@ export class DryService extends AbstractService {
 
     async setRotationSpeed(value: CharacteristicValue) {
         this.platform.log.debug('RotationSpeed ->', value);
-        this.platform.melviewService?.command(
-            new CommandRotationSpeed(value, this.device, this.platform));
+        await this.applyResponse(await this.platform.melviewService?.command(
+            new CommandRotationSpeed(value, this.device, this.platform)));
     }
 
     async getRotationSpeed(): Promise<CharacteristicValue> {
