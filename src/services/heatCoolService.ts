@@ -9,7 +9,6 @@ import {
     CommandTargetHeaterCoolerState,
     CommandTemperature,
 } from '../melviewCommand';
-import {WithUUID} from 'hap-nodejs';
 
 export class HeatCoolService extends AbstractService {
     constructor(
@@ -55,8 +54,8 @@ export class HeatCoolService extends AbstractService {
         }
     }
 
-    protected getServiceType<T extends WithUUID<typeof Service>>() : T {
-        return this.platform.Service.HeaterCooler as T;
+    protected getServiceType() : typeof Service {
+        return this.platform.Service.HeaterCooler;
     }
 
     protected getDeviceRoom(): string {

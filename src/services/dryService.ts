@@ -6,7 +6,6 @@ import {
     CommandPower, CommandRotationSpeed,
     CommandTargetHumidifierDehumidifierState,
 } from '../melviewCommand';
-import {WithUUID} from 'hap-nodejs';
 
 export class DryService extends AbstractService {
     public constructor(
@@ -46,8 +45,8 @@ export class DryService extends AbstractService {
                 this.platform));
     }
 
-    protected getServiceType<T extends WithUUID<typeof Service>>(): T {
-        return this.platform.Service.HumidifierDehumidifier as T;
+    protected getServiceType(): typeof Service {
+        return this.platform.Service.HumidifierDehumidifier;
     }
 
     protected getDeviceRoom(): string {

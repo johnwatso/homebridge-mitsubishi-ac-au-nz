@@ -3,9 +3,9 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz"><img src="https://img.shields.io/npm/v/homebridge-mitsubishi-ac-au-nz.svg" alt="npm version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
-  <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D18.15-339933.svg" alt="Node.js"></a>
-  <a href="https://homebridge.io/"><img src="https://img.shields.io/badge/homebridge-%3E%3D1.8-purple.svg" alt="Homebridge"></a>
-  <a href="#homekit-support"><img src="https://img.shields.io/badge/HomeKit-AC%20%2B%20fan-0f7fff.svg" alt="HomeKit AC and fan"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/node-22%20%7C%2024-339933.svg" alt="Node.js"></a>
+  <a href="https://homebridge.io/"><img src="https://img.shields.io/badge/homebridge-%3E%3D2.0-purple.svg" alt="Homebridge"></a>
+  <a href="#homekit-support"><img src="https://img.shields.io/badge/HomeKit-AC-0f7fff.svg" alt="HomeKit AC"></a>
   <a href="#network-notes"><img src="https://img.shields.io/badge/control-MELView%20%2B%20LAN-success.svg" alt="MELView assisted LAN"></a>
 </p>
 
@@ -19,10 +19,22 @@ This project is a modernized fork of the original [`aurc/melview-mitsubishi-au-n
 
 Published on npm as [`homebridge-mitsubishi-ac-au-nz`](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz).
 
+## Modernization
+This fork has been modernized for Homebridge 2.0 and newer Homebridge installations.
+
+- Targets Homebridge `>=2.0.0` and Node.js `22` or `24`.
+- Builds against the current Homebridge 2 API and Matter-era type definitions.
+- Uses Homebridge's dynamic platform model so discovered units are registered once and restored from cache cleanly.
+- Removes cached accessories when MELView no longer reports the unit.
+- Cleans up polling timers during Homebridge shutdown.
+- Keeps the HomeKit model focused on the main heater-cooler accessory, with fan speed exposed there instead of adding a separate fan-only service.
+- Removes stale optional services, such as disabled dry mode or the old fan service, from cached accessories on startup.
+- Uses stricter TypeScript with current dependency versions and a refreshed lockfile.
+
 ## About
 Homebridge Mitsubishi AC AU/NZ brings Mitsubishi Electric Wi-Fi Control air conditioners and heat pumps into Apple Home through Homebridge.
 
-The plugin discovers units from your Mitsubishi Wi-Fi Control / MELView account, exposes each unit as a HomeKit heater-cooler accessory, and adds supported fan controls so the Home app feels closer to a native AC controller.
+The plugin discovers units from your Mitsubishi Wi-Fi Control / MELView account and exposes each unit as a HomeKit heater-cooler accessory with supported AC controls.
 
 Day-to-day commands are MELView-assisted. The plugin authenticates with MELView, sends the command through MELView, and then uses the returned local command token to make a fast LAN request directly to the unit where available. This is not fully offline local control, but it can make commands feel much more responsive than cloud-only integrations.
 
@@ -43,8 +55,7 @@ If your unit appears in the Mitsubishi Wi-Fi Control app, it is a good candidate
 - **Heater/Cooler Accessory:** Appears in Apple Home as a HomeKit heater-cooler service.
 - **Power Control:** Turn units on and off.
 - **Mode Control:** Heat, cool, and auto where supported by the unit.
-- **Fan-Only Mode:** Exposes fan-only operation as a linked HomeKit fan service.
-- **Fan Speed:** Set fan speed from Apple Home, including auto fan where supported.
+- **Fan Speed:** Set fan speed from the main Apple Home AC control, including auto fan where supported.
 - **Swing:** Toggle swing for units that report swing support through MELView.
 - **Target Temperature:** Set heating and cooling target temperatures using the unit's supported ranges.
 - **Room Temperature:** Reports the current room temperature from MELView.
@@ -95,7 +106,7 @@ For best results, your Homebridge host should be able to reach the Wi-Fi module'
 
 ## Known Limitations
 - **Internet required:** MELView authentication is still required for normal operation.
-- **Dry mode:** Optional and less thoroughly tested than heat/cool/fan.
+- **Dry mode:** Optional and less thoroughly tested than heat/cool.
 - **Swing:** Exposed only for units that report swing support through MELView.
 - **Vane direction:** Currently exposed as swing on/off, not precise vertical or horizontal vane positions.
 - **Outdoor temperature:** Not exposed yet; MELView data varies between units.

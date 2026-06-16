@@ -4,7 +4,6 @@ import {MelviewMitsubishiHomebridgePlatform} from './platform';
 import {Unit} from './data';
 import {HeatCoolService} from './services/heatCoolService';
 import {DryService} from './services/dryService';
-import {FanService} from './services/fanService';
 
 /**
  * Platform Accessory
@@ -13,7 +12,6 @@ import {FanService} from './services/fanService';
  */
 export class MelviewMitsubishiPlatformAccessory {
     private dryService?: DryService;
-    private fanService?: FanService;
     private acService: HeatCoolService;
     constructor(
         private readonly platform: MelviewMitsubishiHomebridgePlatform,
@@ -43,28 +41,21 @@ export class MelviewMitsubishiPlatformAccessory {
             this.acService.getService().addLinkedService(this.dryService.getService());
             this.platform.log.info('DRY Capability:', device.room, ' [COMPLETED]');
           } else {
+            this.removeService(this.platform.Service.HumidifierDehumidifier);
             this.platform.log.info('DRY Capability:', device.room, ' [UNAVAILABLE]');
           }
+        } else {
+          this.removeService(this.platform.Service.HumidifierDehumidifier);
         }
 
-        /*********************************************************
-         * FAN Capability
-         * https://developers.homebridge.io/#/service/Fanv2
-         *********************************************************/
-        if (device.capabilities?.fanstage && device.capabilities.fanstage > 0) {
-          this.fanService = new FanService(this.platform, this.accessory);
-          this.acService.getService().addLinkedService(this.fanService.getService());
-          this.platform.log.info('FAN Capability:', device.room, ' [COMPLETED]');
-        } else {
-          this.platform.log.info('FAN Capability:', device.room, ' [UNAVAILABLE]');
-        }
+        this.removeService(this.platform.Service.Fanv2);
 
 
         /*********************************************************
          * Polling for state change
          *********************************************************/
 
-        setInterval(() => {
+        const pollingInterval = setInterval(() => {
           this.platform.melviewService?.getStatus(
             this.accessory.context.device.unitid)
             .then(s => {
@@ -73,12 +64,19 @@ export class MelviewMitsubishiPlatformAccessory {
               this.accessory.context.device.state = s;
               this.acService.updateCharacteristics().finally();
               this.dryService?.updateCharacteristics().finally();
-              this.fanService?.updateCharacteristics().finally();
             })
             .catch(e => {
               this.platform.log.error('Unable to find accessory status. Check the network');
               this.platform.log.debug(String(e));
             });
         }, 5000);
+        this.platform.registerPollingInterval(pollingInterval);
+    }
+
+    private removeService(serviceType: typeof this.platform.Service.HumidifierDehumidifier) {
+      const service = this.accessory.getService(serviceType);
+      if (service) {
+        this.accessory.removeService(service);
+      }
     }
 }

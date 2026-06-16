@@ -66,13 +66,6 @@ export class CommandTargetHumidifierDehumidifierState extends AbstractCommand {
   }
 }
 
-export class CommandTargetFanState extends AbstractCommand {
-  public execute(): string {
-        this.device.state!.setmode = WorkMode.FAN;
-        return 'MD' + WorkMode.FAN;
-  }
-}
-
 export class CommandRotationSpeed extends AbstractCommand {
   public execute(): string {
     const rotationSpeed = Number(this.value);

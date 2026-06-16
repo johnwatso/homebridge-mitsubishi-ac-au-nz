@@ -1,7 +1,6 @@
 import {CharacteristicValue, Logger, PlatformAccessory, Service} from 'homebridge';
 import {MelviewMitsubishiHomebridgePlatform} from '../platform';
 import {Unit} from '../data';
-import {WithUUID} from 'hap-nodejs';
 
 export abstract class AbstractService {
     protected service: Service;
@@ -34,7 +33,7 @@ export abstract class AbstractService {
 
     }
 
-    protected abstract getServiceType<T extends WithUUID<typeof Service>>() : T
+    protected abstract getServiceType() : typeof Service
     protected abstract getDeviceRoom() : string;
     protected abstract getDeviceName() : string;
 

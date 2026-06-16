@@ -22,7 +22,8 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
     public readonly Service: typeof Service;
     public readonly Characteristic: typeof Characteristic;
     public melviewService?: MelviewService;
-    public readonly accessories: PlatformAccessory[] = [];
+    public accessories: PlatformAccessory[] = [];
+    private readonly pollingIntervals = new Set<NodeJS.Timeout>();
 
     constructor(
         public readonly log: Logger,
@@ -48,6 +49,13 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
         // run the method to discover / register your devices as accessories
         this.discoverDevices().finally();
       });
+
+      this.api.on('shutdown', () => {
+        for (const interval of this.pollingIntervals) {
+          clearInterval(interval);
+        }
+        this.pollingIntervals.clear();
+      });
     }
 
     /**
@@ -59,6 +67,10 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
 
       // add the restored accessory to the accessories cache so we can track if it has already been registered
       this.accessories.push(accessory);
+    }
+
+    registerPollingInterval(interval: NodeJS.Timeout) {
+      this.pollingIntervals.add(interval);
     }
 
     /**
@@ -74,6 +86,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
         if (!r) {
           return;
         }
+        const discoveredAccessoryUUIDs = new Set<string>();
         for (let j = 0; j < r.length; j++) {
           const b = r[j];
           this.log.info('Discovered Building [', b.buildingid, '] = \'', b.building,
@@ -82,6 +95,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
             const device = b.units[i];
 
             const uuid = this.api.hap.uuid.generate(device.unitid);
+            discoveredAccessoryUUIDs.add(uuid);
             this.log.debug('IDS:', device.unitid, uuid);
             const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
 
@@ -92,14 +106,10 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
               const s = await this.melviewService!.getStatus(device.unitid);
               const c = await this.melviewService!.capabilities(device.unitid);
               existingAccessory.context.device = device;
+              existingAccessory.context.dry = Boolean(this.config.dry);
               existingAccessory.context.device.capabilities = c;
               existingAccessory.context.device.state = s;
               new MelviewMitsubishiPlatformAccessory(this, existingAccessory);
-
-              // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
-              // remove platform accessories when no longer present
-              // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
-              // this.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
             } else {
               // the accessory does not yet exist, so we need to create it
               this.log.info('Adding new accessory:', device.room, '[', device.unitid, ']:', uuid);
@@ -116,6 +126,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
               // store a copy of the device object in the `accessory.context`
               // the `context` property can be used to store any data about the accessory you may need
               accessory.context.device = device;
+              accessory.context.dry = Boolean(this.config.dry);
 
               // create the accessory handler for the newly create accessory
               // this is imported from `platformAccessory.ts`
@@ -123,8 +134,21 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
 
               // link the accessory to your platform
               this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+              this.accessories.push(accessory);
             }
           }
+        }
+        const staleAccessories = this.accessories.filter(
+          accessory => !discoveredAccessoryUUIDs.has(accessory.UUID),
+        );
+        if (staleAccessories.length > 0) {
+          for (const accessory of staleAccessories) {
+            this.log.info('Removing accessory no longer discovered:', accessory.displayName);
+          }
+          this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, staleAccessories);
+          this.accessories = this.accessories.filter(
+            accessory => discoveredAccessoryUUIDs.has(accessory.UUID),
+          );
         }
       } catch(e) {
         this.log.error('Failed to process platform discovery. Fix the problem and restart the service.');
