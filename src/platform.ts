@@ -1,28 +1,34 @@
 import {
   API,
-  Categories,
   Characteristic,
   DynamicPlatformPlugin,
   Logger,
+  MatterAccessory,
   PlatformAccessory,
   PlatformConfig,
   Service,
 } from 'homebridge';
 
 import {PLATFORM_NAME, PLUGIN_NAME} from './settings';
-import {MelviewMitsubishiPlatformAccessory} from './platformAccessory';
+import {MelviewMatterAccessory} from './matterAccessory';
 import {MelviewService} from './melviewService';
 
 /**
  * HomebridgePlatform
- * This class is the main constructor for your plugin, this is where you should
- * parse the user config and discover/register accessories with Homebridge.
+ *
+ * This plugin exposes each Mitsubishi unit as a native Matter RoomAirConditioner
+ * (plus an optional outdoor temperature sensor) via Homebridge 2.0's Matter API.
+ * A `matter` block must be enabled on the bridge for the plugin to publish.
  */
 export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugin {
     public readonly Service: typeof Service;
     public readonly Characteristic: typeof Characteristic;
     public melviewService?: MelviewService;
-    public accessories: PlatformAccessory[] = [];
+    // Matter accessories restored from cache (used to decide register vs update vs remove).
+    private cachedMatterAccessories: MatterAccessory[] = [];
+    // HAP accessories left over from the pre-Matter version; removed on launch.
+    private staleHapAccessories: PlatformAccessory[] = [];
+    private readonly controllers = new Map<string, MelviewMatterAccessory>();
     private readonly pollingIntervals = new Set<NodeJS.Timeout>();
 
     constructor(
@@ -46,7 +52,6 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
 
       this.api.on('didFinishLaunching', () => {
         log.debug('Executed didFinishLaunching callback');
-        // run the method to discover / register your devices as accessories
         this.discoverDevices().finally();
       });
 
@@ -59,120 +64,120 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
     }
 
     /**
-     * This function is invoked when homebridge restores cached accessories from disk at startup.
-     * It should be used to setup event handlers for characteristics and update respective values.
+     * Old HAP accessories from the pre-Matter version are restored here so they can
+     * be removed during migration (the plugin no longer publishes via HAP).
      */
     configureAccessory(accessory: PlatformAccessory) {
-      this.log.info('Loading accessory from cache:', accessory.displayName);
+      this.staleHapAccessories.push(accessory);
+    }
 
-      // add the restored accessory to the accessories cache so we can track if it has already been registered
-      this.accessories.push(accessory);
+    /** Matter equivalent of configureAccessory: track cached Matter accessories. */
+    configureMatterAccessory(accessory: MatterAccessory) {
+      this.log.info('Loading Matter accessory from cache:', accessory.displayName);
+      this.cachedMatterAccessories.push(accessory);
     }
 
     registerPollingInterval(interval: NodeJS.Timeout) {
       this.pollingIntervals.add(interval);
     }
 
-    /**
-     * This is an example method showing how to register discovered accessories.
-     * Accessories must only be registered once, previously created accessories
-     * must not be registered again to prevent "duplicate UUID" errors.
-     */
     async discoverDevices() {
+      if (!this.api.isMatterEnabled()) {
+        this.log.error(
+          'Matter is not enabled for this bridge. This plugin publishes Matter accessories, so it requires a',
+          '"matter" block on the Homebridge bridge (or this plugin\'s child bridge). See the README for setup.',
+        );
+        return;
+      }
+
       try {
+        // Remove any HAP accessories left over from the pre-Matter version.
+        this.removeStaleHapAccessories();
 
         await this.melviewService!.login();
         const r = await this.melviewService!.discover();
         if (!r) {
           return;
         }
-        const discoveredAccessoryUUIDs = new Set<string>();
-        for (let j = 0; j < r.length; j++) {
-          const b = r[j];
+
+        const discoveredUUIDs = new Set<string>();
+        const toRegister: MatterAccessory[] = [];
+        const toUpdate: MatterAccessory[] = [];
+
+        for (const b of r) {
           this.log.info('Discovered Building [', b.buildingid, '] = \'', b.building,
             '\' with', b.units.length, 'units!');
-          for (let i = 0; i < b.units.length; i++) {
-            const device = b.units[i];
-
-            const uuid = this.api.hap.uuid.generate(device.unitid);
-            discoveredAccessoryUUIDs.add(uuid);
-            this.log.debug('IDS:', device.unitid, uuid);
-            const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
-
-            // Isolate each unit: a failure setting one up (e.g. a transient
-            // status/capabilities error) must not abort discovery for the rest.
-            // The UUID was already recorded above, so an errored existing unit is
-            // still protected from stale-removal.
+          for (const device of b.units) {
             try {
-              if (existingAccessory) {
-                // the accessory already exists
-                this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
+              device.capabilities = await this.melviewService!.capabilities(device.unitid);
+              device.state = await this.melviewService!.getStatus(device.unitid);
 
-                const s = await this.melviewService!.getStatus(device.unitid);
-                const c = await this.melviewService!.capabilities(device.unitid);
-                existingAccessory.context.device = device;
-                existingAccessory.context.dry = Boolean(this.config.dry);
-                existingAccessory.context.outdoorTemperature = Boolean(this.config.outdoorTemperature);
-                existingAccessory.context.device.capabilities = c;
-                existingAccessory.context.device.state = s;
-                new MelviewMitsubishiPlatformAccessory(this, existingAccessory);
-              } else {
-                // the accessory does not yet exist, so we need to create it
-                this.log.info('Adding new accessory:', device.room, '[', device.unitid, ']:', uuid);
+              const controller = new MelviewMatterAccessory(this, device);
+              controller.uuids().forEach(uuid => discoveredUUIDs.add(uuid));
 
-                const c = await this.melviewService!.capabilities(device.unitid);
-                const s = await this.melviewService!.getStatus(device.unitid);
-
-                device.capabilities = c;
-                device.state = s;
-                const accessory = new this.api.platformAccessory(device.room, uuid, Categories.AIR_CONDITIONER);
-
-                // store a copy of the device object in the `accessory.context`
-                // the `context` property can be used to store any data about the accessory you may need
-                accessory.context.device = device;
-                accessory.context.dry = Boolean(this.config.dry);
-                accessory.context.outdoorTemperature = Boolean(this.config.outdoorTemperature);
-
-                // create the accessory handler for the newly create accessory
-                // this is imported from `platformAccessory.ts`
-                new MelviewMitsubishiPlatformAccessory(this, accessory);
-
-                // link the accessory to your platform
-                this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-                this.accessories.push(accessory);
+              for (const accessory of controller.buildAccessories()) {
+                if (this.cachedMatterAccessories.some(a => a.UUID === accessory.UUID)) {
+                  toUpdate.push(accessory);
+                } else {
+                  this.log.info('Adding new Matter accessory:', accessory.displayName, '[', accessory.UUID, ']');
+                  toRegister.push(accessory);
+                }
               }
+              this.controllers.set(controller.acUuid, controller);
             } catch (e) {
               this.log.error('Failed to set up unit', device.room, '[', device.unitid, '] - skipping for now.');
               this.log.debug(String(e));
             }
           }
         }
-        // Guard against a transient/empty MELView listing wiping still-valid
-        // accessories. If discovery returned no units at all, treat it as an
-        // unreliable response and skip removal rather than unregistering
-        // everything (which would lose HomeKit room/name/automation associations).
-        if (discoveredAccessoryUUIDs.size === 0) {
-          this.log.warn(
-            'MELView discovery returned no units; skipping stale-accessory removal to avoid',
-            'unregistering valid accessories. Existing accessories left untouched.',
-          );
-          return;
+
+        if (toRegister.length > 0) {
+          await this.api.matter!.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, toRegister);
         }
-        const staleAccessories = this.accessories.filter(
-          accessory => !discoveredAccessoryUUIDs.has(accessory.UUID),
-        );
-        if (staleAccessories.length > 0) {
-          for (const accessory of staleAccessories) {
-            this.log.info('Removing accessory no longer discovered:', accessory.displayName);
-          }
-          this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, staleAccessories);
-          this.accessories = this.accessories.filter(
-            accessory => discoveredAccessoryUUIDs.has(accessory.UUID),
-          );
+        if (toUpdate.length > 0) {
+          await this.api.matter!.updatePlatformAccessories(toUpdate);
         }
+
+        // Start polling once accessories are registered.
+        for (const controller of this.controllers.values()) {
+          controller.startPolling();
+        }
+
+        await this.removeStaleMatterAccessories(discoveredUUIDs);
       } catch(e) {
         this.log.error('Failed to process platform discovery. Fix the problem and restart the service.');
         this.log.debug(String(e));
       }
+    }
+
+    private removeStaleHapAccessories() {
+      if (this.staleHapAccessories.length === 0) {
+        return;
+      }
+      this.log.info('Removing', this.staleHapAccessories.length,
+        'legacy HAP accessory/accessories (migrated to Matter).');
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, this.staleHapAccessories);
+      this.staleHapAccessories = [];
+    }
+
+    private async removeStaleMatterAccessories(discoveredUUIDs: Set<string>) {
+      // Guard against a transient/empty MELView listing wiping still-valid accessories.
+      if (discoveredUUIDs.size === 0) {
+        this.log.warn(
+          'MELView discovery returned no units; skipping stale-accessory removal to avoid',
+          'unregistering valid accessories. Existing accessories left untouched.',
+        );
+        return;
+      }
+
+      const stale = this.cachedMatterAccessories.filter(a => !discoveredUUIDs.has(a.UUID));
+      if (stale.length === 0) {
+        return;
+      }
+      for (const accessory of stale) {
+        this.log.info('Removing Matter accessory no longer discovered:', accessory.displayName);
+      }
+      await this.api.matter!.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, stale);
+      this.cachedMatterAccessories = this.cachedMatterAccessories.filter(a => discoveredUUIDs.has(a.UUID));
     }
 }
