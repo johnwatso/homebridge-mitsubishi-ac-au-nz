@@ -5,43 +5,71 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-22%20%7C%2024-339933.svg" alt="Node.js"></a>
   <a href="https://homebridge.io/"><img src="https://img.shields.io/badge/homebridge-%3E%3D2.0-purple.svg" alt="Homebridge"></a>
-  <a href="#homekit-support"><img src="https://img.shields.io/badge/HomeKit-AC-0f7fff.svg" alt="HomeKit AC"></a>
-  <a href="#network-notes"><img src="https://img.shields.io/badge/control-MELView%20%2B%20LAN-success.svg" alt="MELView assisted LAN"></a>
+  <a href="#features"><img src="https://img.shields.io/badge/HomeKit-AC-0f7fff.svg" alt="HomeKit AC"></a>
+  <a href="#how-it-works"><img src="https://img.shields.io/badge/control-MELView%20%2B%20LAN-success.svg" alt="MELView assisted LAN"></a>
 </p>
 
 <p align="center">
   <img src="assets/homebridge-mitsubishi-ac-au-nz.png" alt="Homebridge Mitsubishi AC AU/NZ" width="320">
 </p>
 
-Homebridge plugin for Mitsubishi Electric Wi-Fi Control air conditioners and heat pumps in Australia and New Zealand, with native-feeling HomeKit controls for heat, cool, auto, fan speed, swing, and optional dry mode.
+Bring your Mitsubishi Electric **Wi-Fi Control** air conditioners and heat pumps into Apple Home. Each unit appears as a native HomeKit heater-cooler with heat, cool, auto, fan speed, swing, and optional dry mode — and commands snap to their new state instantly rather than waiting on a poll.
 
-This project is a modernized fork of the original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) plugin, updated for current Node/Homebridge versions and expanded HomeKit support.
+This is a modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz), updated for current Node and Homebridge 2.0, with expanded HomeKit support and a focus on responsiveness and reliability. Published on npm as [`homebridge-mitsubishi-ac-au-nz`](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz).
 
-Published on npm as [`homebridge-mitsubishi-ac-au-nz`](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz).
+> **Region:** built for Mitsubishi Electric units in Australia and New Zealand that pair with the **Mitsubishi Wi-Fi Control** app (MELView). If your unit shows up in that app, it's a good candidate.
 
-## Modernization
-This fork has been modernized for Homebridge 2.0 and newer Homebridge installations.
+## Contents
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Supported hardware](#supported-hardware)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Responsiveness & reliability](#responsiveness--reliability)
+- [Network notes](#network-notes)
+- [Known limitations](#known-limitations)
+- [Roadmap](#roadmap)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Credits & license](#credits--license)
 
-- Targets Homebridge `>=2.0.0` and Node.js `22` or `24`.
-- Builds against the current Homebridge 2 API and Matter-era type definitions.
-- Uses Homebridge's dynamic platform model so discovered units are registered once and restored from cache cleanly.
-- Removes cached accessories when MELView no longer reports the unit.
-- Cleans up polling timers during Homebridge shutdown.
-- Keeps the HomeKit model focused on the main heater-cooler accessory, with fan speed exposed there instead of adding a separate fan-only service.
-- Removes stale optional services, such as disabled dry mode or the old fan service, from cached accessories on startup.
-- Uses stricter TypeScript with current dependency versions and a refreshed lockfile.
+## Features
+Each unit is exposed as a single, native Apple Home **heater-cooler** tile:
 
-## About
-Homebridge Mitsubishi AC AU/NZ brings Mitsubishi Electric Wi-Fi Control air conditioners and heat pumps into Apple Home through Homebridge.
+- **Power** — turn the unit on and off.
+- **Mode** — heat, cool, and auto, matched to what the unit actually supports (cool-only and auto-capable units are detected).
+- **Fan speed** — driven from the AC tile's fan slider, with the number of steps matched to the unit's real fan stages, including auto fan where supported.
+- **Swing** — on/off for units that report swing support.
+- **Target temperature** — within each unit's supported heating/cooling range; always Celsius (HomeKit's native unit for MELView).
+- **Room temperature** — live indoor reading.
+- **Outdoor temperature** *(optional)* — exposed as a separate temperature-sensor tile when available, with implausible/placeholder readings hidden.
+- **Dry / dehumidifier mode** *(optional)* — exposed for units that support it when enabled in config.
+- **Siri, scenes & automations** — works with everything Apple Home offers through Homebridge.
 
-The plugin discovers units from your Mitsubishi Wi-Fi Control / MELView account and exposes each unit as a HomeKit heater-cooler accessory with supported AC controls.
+The plugin deliberately sticks to HomeKit-native AC features — no "pretend" fan accessory, no custom characteristics that only show up in third-party apps.
 
-Day-to-day commands are MELView-assisted. The plugin authenticates with MELView, sends the command through MELView, and then uses the returned local command token to make a fast LAN request directly to the unit where available. This is not fully offline local control, but it can make commands feel much more responsive than cloud-only integrations.
+## How it works
+Control is **MELView-assisted with a local fast path**. For each command the plugin:
 
-## Supported Hardware
-This plugin is intended for Mitsubishi Electric air conditioners and heat pumps in Australia and New Zealand that work with the Mitsubishi Electric **Wi-Fi Control** app.
+1. Authenticates with your MELView account and sends the command through MELView.
+2. Receives a local command token in the response.
+3. Fires a direct LAN request to the unit's Wi-Fi module using that token:
 
-Known working combinations from the original project:
+   ```text
+   http://<unit-local-ip>/smart
+   ```
+
+This isn't fully offline local control — MELView is still used for login, discovery, and authorization — but the LAN hop makes commands feel far snappier than cloud-only integrations. The plugin also applies the unit's returned state immediately, so the tile reflects reality without waiting for the next poll.
+
+## Requirements
+- **Homebridge** `>= 2.0.0`
+- **Node.js** `22` or `24`
+- A **Mitsubishi Wi-Fi Control / MELView** account with your units already added in the app
+- Network reachability from the Homebridge host to each unit's LAN IP (see [Network notes](#network-notes))
+
+## Supported hardware
+Intended for Mitsubishi Electric air conditioners and heat pumps in AU/NZ that work with the **Wi-Fi Control** app. Known-working combinations from the original project:
 
 | Indoor Unit | Wi-Fi Module |
 | :--- | :--- |
@@ -49,35 +77,22 @@ Known working combinations from the original project:
 | MSZ-GL35VGD | MAC-568IF-E |
 | MSZ-AP25VGD | MAC-568IF-E |
 
-If your unit appears in the Mitsubishi Wi-Fi Control app, it is a good candidate for this plugin.
-
-## HomeKit Support
-- **Heater/Cooler Accessory:** Appears in Apple Home as a HomeKit heater-cooler service.
-- **Power Control:** Turn units on and off.
-- **Mode Control:** Heat, cool, and auto where supported by the unit.
-- **Fan Speed:** Set fan speed from the main Apple Home AC control, including auto fan where supported.
-- **Swing:** Toggle swing for units that report swing support through MELView.
-- **Temperature Units:** Exposes Celsius as the native HomeKit display unit.
-- **Target Temperature:** Set heating and cooling target temperatures using the unit's supported ranges.
-- **Room Temperature:** Reports the current room temperature from MELView.
-- **Outdoor Temperature:** Optionally exposes MELView outdoor temperature as a linked HomeKit temperature sensor.
-- **Optional Dry Mode:** Can expose dry/dehumidifier mode when enabled in config and supported by the unit.
-- **State Updates:** Polls MELView so changes made outside HomeKit are reflected back into Apple Home.
-- **Siri, Scenes, and Automations:** Works with standard Apple Home automations through Homebridge.
-
-The plugin intentionally sticks to HomeKit-native AC features. MELView fan-only mode is not exposed because HomeKit's heater-cooler service supports fan speed and swing, but does not provide a native fan-only target mode without adding a separate fan service.
+Other models that appear in the Wi-Fi Control app are likely to work; capabilities (modes, fan stages, swing, dry) are read per-unit from MELView.
 
 ## Installation
-Install from npm: [homebridge-mitsubishi-ac-au-nz](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz)
+1. Install [Homebridge](https://homebridge.io/).
+2. In the Homebridge Config UI, search for **`homebridge-mitsubishi-ac-au-nz`** and install it.
+3. Enter your Mitsubishi Wi-Fi Control account credentials.
+4. Restart Homebridge.
 
-1. Install Homebridge.
-2. Search for `homebridge-mitsubishi-ac-au-nz` in Homebridge Config UI.
-3. Install the plugin.
-4. Enter your Mitsubishi Wi-Fi Control account credentials.
-5. Restart Homebridge.
+Or install from the command line:
+
+```bash
+npm install -g homebridge-mitsubishi-ac-au-nz
+```
 
 ## Configuration
-Add the following to your Homebridge `config.json`:
+Add the platform to your Homebridge `config.json`:
 
 ```json
 {
@@ -85,65 +100,71 @@ Add the following to your Homebridge `config.json`:
   "user": "user@example.com",
   "password": "your-password",
   "dry": false,
-  "outdoorTemperature": false
+  "outdoorTemperature": false,
+  "pollInterval": 10
 }
 ```
 
-| Setting | Required | Description |
-| :--- | :--- | :--- |
-| `platform` | Yes | Must be `MitsubishiAUNZ`. |
-| `user` | Yes | Mitsubishi Wi-Fi Control / MELView account email. |
-| `password` | Yes | Mitsubishi Wi-Fi Control / MELView account password. |
-| `dry` | No | Set to `true` to expose supported units as a HomeKit dehumidifier service. Defaults to `false`. |
-| `outdoorTemperature` | No | Set to `true` to expose MELView outdoor temperature as a linked HomeKit temperature sensor when available. Defaults to `false`. |
+| Setting | Required | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `platform` | Yes | — | Must be `MitsubishiAUNZ`. |
+| `user` | Yes | — | Mitsubishi Wi-Fi Control / MELView account email. |
+| `password` | Yes | — | Mitsubishi Wi-Fi Control / MELView account password. |
+| `dry` | No | `false` | Expose supported units' dry mode as a HomeKit dehumidifier service. |
+| `outdoorTemperature` | No | `false` | Expose MELView outdoor temperature as a separate HomeKit temperature sensor when available. |
+| `pollInterval` | No | `10` | Seconds between MELView state refreshes (range `5`–`120`). Commands update instantly, so this only catches changes made outside HomeKit (e.g. the wall remote). Higher is gentler on the MELView API. |
 
-Keep the Mitsubishi platform on the main bridge unless you specifically want it isolated. No child bridge is required.
+Keep the platform on the main bridge unless you specifically want it isolated — no child bridge is required.
 
-## Network Notes
-This plugin is **not fully local-only**.
+### A note on the outdoor temperature tile
+Apple Home pools every temperature sensor in a room into that room's climate summary. If you enable `outdoorTemperature` and the sensor sits in the same room as the indoor unit, it will pull that room's average toward the outdoor reading. Assign the outdoor tile to a different room if that bothers you — the AC's own current-temperature reading is unaffected either way.
 
-It uses MELView for login, discovery, status polling, and command authorization. For commands, it asks MELView for a local command token and then sends a follow-up request to the unit on your LAN:
+## Responsiveness & reliability
+This fork puts real effort into making the accessory feel native and behave well on flaky networks and multi-unit accounts:
 
-```text
-http://<unit-local-ip>/smart
-```
+- **Instant command feedback** — after every command the plugin applies the unit's authoritative returned state and refreshes the tile immediately, instead of waiting for the next poll.
+- **Capability-aware fan slider** — the slider's steps are derived from each unit's reported fan stages, so a 3-speed unit shows three detents and a 5-speed unit shows five, with auto fan handled where supported.
+- **Relaxed, staggered polling** — units poll on a configurable interval with a random offset so they don't all hit MELView on the same tick (avoids self-inflicted rate-limiting).
+- **Resilient discovery** — each unit is set up independently, so one flaky unit can't abort discovery for the rest; a transient empty MELView listing will **not** wipe your existing accessories.
+- **Smart re-authentication** — token refreshes are awaited and de-duplicated, so many polling units near token expiry don't trigger a login stampede.
+- **Clear fault logging** — MELView fault/error states are logged when they change (not spammed every poll), and obviously-bad outdoor readings are treated as a fault rather than shown.
 
-For best results, your Homebridge host should be able to reach the Wi-Fi module's local IP address on your LAN. If your Homebridge host and heat pump are on different VLANs, allow traffic from Homebridge to the heat pump module.
+## Network notes
+This plugin is **not fully local-only.** It uses MELView for login, discovery, status polling, and command authorization, and only the per-command follow-up goes directly to the unit over your LAN.
 
-## Known Limitations
-- **Internet required:** MELView authentication is still required for normal operation.
-- **Dry mode:** Optional and less thoroughly tested than heat/cool.
-- **Swing:** Exposed only for units that report swing support through MELView.
-- **Vane direction:** Currently exposed as swing on/off, not precise vertical or horizontal vane positions.
-- **Outdoor temperature:** Optional and off by default; MELView data varies between units, so implausible/placeholder readings are hidden rather than shown.
-- **Energy reporting:** Not exposed yet — see Roadmap.
+For best results, the Homebridge host should be able to reach each Wi-Fi module's local IP. If Homebridge and your heat pumps are on different VLANs, allow traffic from Homebridge to the modules.
+
+## Known limitations
+- **Internet required** — MELView authentication is needed for normal operation; it is not offline-only control.
+- **Dry mode** — optional and less thoroughly tested than heat/cool.
+- **Swing** — exposed only for units that report swing support through MELView.
+- **Vane direction** — exposed as swing on/off, not precise vertical/horizontal vane positions (HomeKit has no native vane control).
+- **Outdoor temperature** — off by default; MELView data varies between units, so implausible/placeholder readings are hidden rather than shown.
+- **Energy reporting** — not exposed yet (see [Roadmap](#roadmap)).
 
 ## Roadmap
-- **Energy reporting (coming soon):** Many units report energy support via MELView, but Apple Home has no native accessory-publishable energy characteristic today. iOS 26's energy features (EnergyKit) are app-layer only, so exposing energy now would mean non-native custom characteristics — which this plugin deliberately avoids. We're waiting on a genuinely native HomeKit energy surface (anticipated around iOS 27) before wiring this up. Units that advertise energy support are logged in the meantime.
+- **Energy reporting** — many units advertise energy support via MELView, but there's no clean native path to surface it in Apple Home today. Classic HomeKit (HAP) has no energy-consumption characteristic, and iOS 27's native Apple Home **Energy** tab is fed by **Matter** (Electrical Power/Energy Measurement clusters) rather than HAP. A native Matter version of this plugin has been prototyped (kept on a separate branch) and will be revisited once Homebridge's Matter API exposes those energy clusters and the MELView energy data source is confirmed. Units advertising energy support are logged in the meantime.
+
+## Troubleshooting
+- **"Plugin has not been configured"** — add your MELView `user` and `password` in the plugin config.
+- **"Unable to find accessory status / Unable to access unit via direct LAN interface"** — usually a network reachability issue: confirm the Homebridge host can reach the unit's LAN IP, and check VLAN/firewall rules. Cloud-only operation still works without the LAN path, just less snappily.
+- **Login fails / auth token errors** — verify the credentials work in the Mitsubishi Wi-Fi Control app; you may need to reset your password with Mitsubishi.
+- **A unit disappeared from Home** — the plugin only removes accessories MELView genuinely stops reporting; a one-off empty/erroring response is ignored. If a unit was removed in MELView, it will be removed here too.
+- **More detail** — enable Homebridge debug logging (`-D`) to see per-command and per-poll diagnostics.
 
 ## Development
-Install dependencies:
-
 ```bash
-npm install
+npm install      # install dependencies
+npm run build    # compile TypeScript
+npm run lint     # eslint (zero warnings)
+npm test         # unit tests (node:test)
+npm audit        # dependency audit
+npm link         # symlink for local Homebridge testing
 ```
 
-Run checks:
+Tests cover the pure mapping logic (fan-stage mapping, command-response merging). Please keep `build`, `lint`, and `test` green.
 
-```bash
-npm run build
-npm run lint
-npm audit
-```
+## Credits & license
+Builds on the original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) project and the MELView reverse-engineering notes from [`NovaGL/diy-melview`](https://github.com/NovaGL/diy-melview).
 
-For local Homebridge testing:
-
-```bash
-npm link
-```
-
-## Credits
-This plugin builds on the original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) project and the MELView reverse-engineering notes from [`NovaGL/diy-melview`](https://github.com/NovaGL/diy-melview).
-
-## License
-Apache-2.0
+Licensed under [Apache-2.0](LICENSE).
