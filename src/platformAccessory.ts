@@ -1,9 +1,10 @@
 import {PlatformAccessory} from 'homebridge';
 
 import {MelviewMitsubishiHomebridgePlatform} from './platform';
-import {Unit} from './data';
+import {State, Unit} from './data';
 import {HeatCoolService} from './services/heatCoolService';
 import {DryService} from './services/dryService';
+import {OutdoorTemperatureService} from './services/outdoorTemperatureService';
 
 /**
  * Platform Accessory
@@ -12,6 +13,7 @@ import {DryService} from './services/dryService';
  */
 export class MelviewMitsubishiPlatformAccessory {
     private dryService?: DryService;
+    private outdoorTemperatureService?: OutdoorTemperatureService;
     private acService: HeatCoolService;
     constructor(
         private readonly platform: MelviewMitsubishiHomebridgePlatform,
@@ -50,6 +52,17 @@ export class MelviewMitsubishiPlatformAccessory {
 
         this.removeService(this.platform.Service.Fanv2);
 
+        /*********************************************************
+         * Outdoor Temperature Capability
+         * https://developers.homebridge.io/#/service/TemperatureSensor
+         *********************************************************/
+        if (accessory.context.outdoorTemperature && this.hasOutdoorTemperature(device)) {
+          this.outdoorTemperatureService = new OutdoorTemperatureService(this.platform, this.accessory);
+          this.acService.getService().addLinkedService(this.outdoorTemperatureService.getService());
+          this.platform.log.info('OUTDOOR TEMP Capability:', device.room, ' [COMPLETED]');
+        } else {
+          this.removeService(this.platform.Service.TemperatureSensor);
+        }
 
         /*********************************************************
          * Polling for state change
@@ -62,8 +75,10 @@ export class MelviewMitsubishiPlatformAccessory {
               // this.platform.log.debug('Updating Accessory State:',
               //   this.accessory.context.device.unitid);
               this.accessory.context.device.state = s;
+              this.reportFault(s);
               this.acService.updateCharacteristics().finally();
               this.dryService?.updateCharacteristics().finally();
+              this.outdoorTemperatureService?.updateCharacteristics().finally();
             })
             .catch(e => {
               this.platform.log.error('Unable to find accessory status. Check the network');
@@ -71,6 +86,40 @@ export class MelviewMitsubishiPlatformAccessory {
             });
         }, 5000);
         this.platform.registerPollingInterval(pollingInterval);
+    }
+
+    private lastFaultKey?: string;
+
+    private hasOutdoorTemperature(device: Unit): boolean {
+      return Number.isFinite(Number.parseFloat(device.state?.outdoortemp ?? ''));
+    }
+
+    /**
+     * Surface MELView's fault/error reporting clearly in the logs, but only when
+     * it changes, so a persistent fault doesn't spam every poll.
+     */
+    private reportFault(state: State): void {
+      const fault = (state.fault ?? '').trim();
+      const error = (state.error ?? '').trim();
+      const hasFault = fault !== '' && fault.toUpperCase() !== 'NONE';
+      const hasError = error !== '' && error.toLowerCase() !== 'ok';
+
+      const key = hasFault || hasError ? `${fault}|${error}` : '';
+      if (key === (this.lastFaultKey ?? '')) {
+        return;
+      }
+      this.lastFaultKey = key;
+
+      const room = this.accessory.context.device.room;
+      if (key === '') {
+        this.platform.log.info('Fault cleared:', room);
+        return;
+      }
+      this.platform.log.warn(
+        `MELView reported a fault for ${room} -`,
+        hasFault ? `fault: ${fault}` : '',
+        hasError ? `error: ${error}` : '',
+      );
     }
 
     private removeService(serviceType: typeof this.platform.Service.HumidifierDehumidifier) {

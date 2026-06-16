@@ -1,6 +1,6 @@
 import {MelviewMitsubishiHomebridgePlatform} from '../platform';
 import {CharacteristicValue, PlatformAccessory, Service} from 'homebridge';
-import {WorkMode} from '../data';
+import {applyCommandResponse, CommandResponse, WorkMode} from '../data';
 import {AbstractService} from './abstractService';
 import {
     CommandPower,
@@ -24,6 +24,10 @@ export class HeatCoolService extends AbstractService {
             .onGet(this.getTargetHeaterCoolerState.bind(this));
         this.service.getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState).props.validValues =
             this.getSupportedTargetHeaterCoolerStates();
+
+        this.service.getCharacteristic(this.platform.Characteristic.TemperatureDisplayUnits)
+            .onSet(this.setTemperatureDisplayUnits.bind(this))
+            .onGet(this.getTemperatureDisplayUnits.bind(this));
 
         this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
             .onGet(this.getCurrentTemperature.bind(this));
@@ -89,9 +93,22 @@ export class HeatCoolService extends AbstractService {
         }
     }
 
+    /**
+     * Apply the authoritative state MELView returned for a command so the
+     * accessory snaps to the new state immediately instead of waiting for the
+     * next poll.
+     */
+    private async applyResponse(response?: CommandResponse): Promise<void> {
+        if (!response || !this.device.state) {
+            return;
+        }
+        applyCommandResponse(this.device.state, response);
+        await this.updateCharacteristics();
+    }
+
     async setActive(value: CharacteristicValue) {
-        await this.platform.melviewService?.command(
-            new CommandPower(value, this.device, this.platform));
+        await this.applyResponse(await this.platform.melviewService?.command(
+            new CommandPower(value, this.device, this.platform)));
         // Default value
         // let v = -1;
         // switch (this.device.state?.setmode) {
@@ -126,8 +143,8 @@ export class HeatCoolService extends AbstractService {
             this.platform.log.warn('setCoolingThresholdTemperature ->', temperature, 'is illegal - updating to', maxVal);
             targetTemperature = maxVal;
         }
-        this.platform.melviewService?.command(
-            new CommandTemperature(targetTemperature, this.device, this.platform));
+        await this.applyResponse(await this.platform.melviewService?.command(
+            new CommandTemperature(targetTemperature, this.device, this.platform)));
     }
 
     async getCoolingThresholdTemperature(): Promise<CharacteristicValue> {
@@ -156,8 +173,8 @@ export class HeatCoolService extends AbstractService {
             targetTemperature = maxVal;
         }
 
-        this.platform.melviewService?.command(
-            new CommandTemperature(targetTemperature, this.device, this.platform));
+        await this.applyResponse(await this.platform.melviewService?.command(
+            new CommandTemperature(targetTemperature, this.device, this.platform)));
     }
 
     async getHeatingThresholdTemperature(): Promise<CharacteristicValue> {
@@ -215,22 +232,8 @@ export class HeatCoolService extends AbstractService {
 
     async setTargetHeaterCoolerState(value: CharacteristicValue) {
         this.platform.log.debug('setTargetHeaterCoolerState ->', value);
-        await this.platform.melviewService?.command(
-            new CommandTargetHeaterCoolerState(value, this.device, this.platform));
-        const c = this.platform.Characteristic;
-        switch (value) {
-            case c.TargetHeaterCoolerState.COOL:
-                this.service.setCharacteristic(c.CurrentHeaterCoolerState, c.CurrentHeaterCoolerState.COOLING);
-                return;
-            case c.TargetHeaterCoolerState.HEAT:
-                this.service.setCharacteristic(c.CurrentHeaterCoolerState, c.CurrentHeaterCoolerState.HEATING);
-                return;
-            case c.TargetHeaterCoolerState.AUTO: {
-                const state = await this.getCurrentHeaterCoolerState(WorkMode.AUTO);
-                this.service.setCharacteristic(c.CurrentHeaterCoolerState, state);
-                return;
-            }
-        }
+        await this.applyResponse(await this.platform.melviewService?.command(
+            new CommandTargetHeaterCoolerState(value, this.device, this.platform)));
     }
 
     async getTargetHeaterCoolerState(): Promise<CharacteristicValue> {
@@ -251,14 +254,28 @@ export class HeatCoolService extends AbstractService {
         return c.TargetHeaterCoolerState.AUTO;
     }
 
+    async setTemperatureDisplayUnits(value: CharacteristicValue) {
+        if (value !== this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS) {
+            this.platform.log.warn('TemperatureDisplayUnits -> Fahrenheit requested, keeping Celsius for MELView.');
+            this.service.updateCharacteristic(
+                this.platform.Characteristic.TemperatureDisplayUnits,
+                this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS,
+            );
+        }
+    }
+
+    async getTemperatureDisplayUnits(): Promise<CharacteristicValue> {
+        return this.platform.Characteristic.TemperatureDisplayUnits.CELSIUS;
+    }
+
     async getCurrentTemperature(): Promise<CharacteristicValue> {
         return parseFloat(this.device.state!.roomtemp);
     }
 
     async setRotationSpeed(value: CharacteristicValue) {
         this.platform.log.debug('RotationSpeed ->', value);
-        this.platform.melviewService?.command(
-            new CommandRotationSpeed(value, this.device, this.platform));
+        await this.applyResponse(await this.platform.melviewService?.command(
+            new CommandRotationSpeed(value, this.device, this.platform)));
     }
 
     async getRotationSpeed(): Promise<CharacteristicValue> {
@@ -267,8 +284,8 @@ export class HeatCoolService extends AbstractService {
 
     async setSwingMode(value: CharacteristicValue) {
         this.platform.log.debug('SwingMode ->', value);
-        this.platform.melviewService?.command(
-            new CommandSwingMode(value, this.device, this.platform));
+        await this.applyResponse(await this.platform.melviewService?.command(
+            new CommandSwingMode(value, this.device, this.platform)));
     }
 
     async getSwingMode(): Promise<CharacteristicValue> {
@@ -282,6 +299,7 @@ export class HeatCoolService extends AbstractService {
         const c = this.platform.Characteristic;
         this.service.updateCharacteristic(c.CurrentHeaterCoolerState, await this.getCurrentHeaterCoolerState());
         this.service.updateCharacteristic(c.TargetHeaterCoolerState, await this.getTargetHeaterCoolerState());
+        this.service.updateCharacteristic(c.TemperatureDisplayUnits, await this.getTemperatureDisplayUnits());
         this.service.updateCharacteristic(c.CurrentTemperature, await this.getCurrentTemperature());
         this.service.updateCharacteristic(c.CoolingThresholdTemperature, await this.getCoolingThresholdTemperature());
         this.service.updateCharacteristic(c.HeatingThresholdTemperature, await this.getHeatingThresholdTemperature());

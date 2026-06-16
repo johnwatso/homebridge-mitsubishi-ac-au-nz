@@ -57,11 +57,15 @@ If your unit appears in the Mitsubishi Wi-Fi Control app, it is a good candidate
 - **Mode Control:** Heat, cool, and auto where supported by the unit.
 - **Fan Speed:** Set fan speed from the main Apple Home AC control, including auto fan where supported.
 - **Swing:** Toggle swing for units that report swing support through MELView.
+- **Temperature Units:** Exposes Celsius as the native HomeKit display unit.
 - **Target Temperature:** Set heating and cooling target temperatures using the unit's supported ranges.
 - **Room Temperature:** Reports the current room temperature from MELView.
+- **Outdoor Temperature:** Optionally exposes MELView outdoor temperature as a linked HomeKit temperature sensor.
 - **Optional Dry Mode:** Can expose dry/dehumidifier mode when enabled in config and supported by the unit.
 - **State Updates:** Polls MELView so changes made outside HomeKit are reflected back into Apple Home.
 - **Siri, Scenes, and Automations:** Works with standard Apple Home automations through Homebridge.
+
+The plugin intentionally sticks to HomeKit-native AC features. MELView fan-only mode is not exposed because HomeKit's heater-cooler service supports fan speed and swing, but does not provide a native fan-only target mode without adding a separate fan service.
 
 ## Installation
 Install from npm: [homebridge-mitsubishi-ac-au-nz](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz)
@@ -80,7 +84,8 @@ Add the following to your Homebridge `config.json`:
   "platform": "MitsubishiAUNZ",
   "user": "user@example.com",
   "password": "your-password",
-  "dry": false
+  "dry": false,
+  "outdoorTemperature": false
 }
 ```
 
@@ -90,6 +95,7 @@ Add the following to your Homebridge `config.json`:
 | `user` | Yes | Mitsubishi Wi-Fi Control / MELView account email. |
 | `password` | Yes | Mitsubishi Wi-Fi Control / MELView account password. |
 | `dry` | No | Set to `true` to expose supported units as a HomeKit dehumidifier service. Defaults to `false`. |
+| `outdoorTemperature` | No | Set to `true` to expose MELView outdoor temperature as a linked HomeKit temperature sensor when available. Defaults to `false`. |
 
 Keep the Mitsubishi platform on the main bridge unless you specifically want it isolated. No child bridge is required.
 

@@ -1,6 +1,7 @@
 import {CharacteristicValue, Logger, PlatformAccessory, Service} from 'homebridge';
 import {MelviewMitsubishiHomebridgePlatform} from '../platform';
 import {Unit} from '../data';
+import {fanCodeToRotationSpeed, fanMinRotation, fanRotationStep} from '../fanMapping';
 
 export abstract class AbstractService {
     protected service: Service;
@@ -26,10 +27,12 @@ export abstract class AbstractService {
         this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed)
             .onSet(this.setRotationSpeed.bind(this))
             .onGet(this.getRotationSpeed.bind(this));
+        const caps = this.device.capabilities;
         this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).props.minValue =
-            this.device.capabilities?.hasautofan === 1 ? 0 : 20;
+            fanMinRotation(caps);
         this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).props.maxValue = 100;
-        this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).props.minStep = 20;
+        this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).props.minStep =
+            fanRotationStep(caps);
 
     }
 
@@ -46,22 +49,7 @@ export abstract class AbstractService {
     }
 
     protected fanSpeedToRotationSpeed(fanSpeed?: number): CharacteristicValue {
-        switch (fanSpeed) {
-            case 0:
-                return 0;
-            case 1:
-                return 20;
-            case 2:
-                return 40;
-            case 3:
-                return 60;
-            case 5:
-                return 80;
-            case 6:
-                return 100;
-            default:
-                return 20;
-        }
+        return fanCodeToRotationSpeed(fanSpeed, this.device.capabilities);
     }
 
     public async updateCharacteristics(): Promise<void> {

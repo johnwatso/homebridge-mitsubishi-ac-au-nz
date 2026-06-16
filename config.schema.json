@@ -23,6 +23,12 @@
         "type": "boolean",
         "default": false,
         "description": "Dry mode is still in development and is subject to bugs."
+      },
+      "outdoorTemperature": {
+        "title": "Expose Outdoor Temperature",
+        "type": "boolean",
+        "default": false,
+        "description": "Expose the MELView outdoor temperature reading as a linked HomeKit temperature sensor when available."
       }
     }
   }

@@ -110,7 +110,7 @@ export class MelviewService {
      * @param command is the command to be executed.
      * @param commandChain any additional commands to be executed in chain.
      */
-    public async command(command : Command, ...commandChain: Command[]) {
+    public async command(command : Command, ...commandChain: Command[]): Promise<CommandResponse> {
       const allComms = [command, ...commandChain].map(c => c.execute()).join(',');
       if (this.authWillExpire()) {
         this.login().catch(e => {
@@ -146,6 +146,7 @@ export class MelviewService {
           this.log.warn('Unable to access unit via direct LAN interface.', e);
         }).finally();
       }
+      return rBody;
     }
 
     /**

@@ -128,3 +128,47 @@ export interface CommandResponse {
     fault: string;
     error: string;
 }
+
+/**
+ * Merge the authoritative state returned by a MELView command into the locally
+ * cached state so HomeKit can refresh immediately, without waiting for the next
+ * poll. Only fields actually present in the response are applied.
+ */
+export function applyCommandResponse(state: State, response: CommandResponse): void {
+    if (typeof response.power === 'number') {
+        state.power = response.power;
+    }
+    if (typeof response.standby === 'number') {
+        state.standby = response.standby;
+    }
+    if (typeof response.setmode === 'number') {
+        state.setmode = response.setmode;
+    }
+    if (typeof response.automode === 'number') {
+        state.automode = response.automode;
+    }
+    if (typeof response.setfan === 'number') {
+        state.setfan = response.setfan;
+    }
+    if (typeof response.airdir === 'number') {
+        state.airdir = response.airdir;
+    }
+    if (typeof response.airdirh === 'number') {
+        state.airdirh = response.airdirh;
+    }
+    if (response.settemp) {
+        state.settemp = response.settemp;
+    }
+    if (response.roomtemp) {
+        state.roomtemp = response.roomtemp;
+    }
+    if (response.outdoortemp) {
+        state.outdoortemp = response.outdoortemp;
+    }
+    if (response.fault !== undefined) {
+        state.fault = response.fault;
+    }
+    if (response.error !== undefined) {
+        state.error = response.error;
+    }
+}

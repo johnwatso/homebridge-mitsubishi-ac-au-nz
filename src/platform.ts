@@ -107,6 +107,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
               const c = await this.melviewService!.capabilities(device.unitid);
               existingAccessory.context.device = device;
               existingAccessory.context.dry = Boolean(this.config.dry);
+              existingAccessory.context.outdoorTemperature = Boolean(this.config.outdoorTemperature);
               existingAccessory.context.device.capabilities = c;
               existingAccessory.context.device.state = s;
               new MelviewMitsubishiPlatformAccessory(this, existingAccessory);
@@ -127,6 +128,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
               // the `context` property can be used to store any data about the accessory you may need
               accessory.context.device = device;
               accessory.context.dry = Boolean(this.config.dry);
+              accessory.context.outdoorTemperature = Boolean(this.config.outdoorTemperature);
 
               // create the accessory handler for the newly create accessory
               // this is imported from `platformAccessory.ts`
