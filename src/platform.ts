@@ -140,6 +140,17 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
             }
           }
         }
+        // Guard against a transient/empty MELView listing wiping still-valid
+        // accessories. If discovery returned no units at all, treat it as an
+        // unreliable response and skip removal rather than unregistering
+        // everything (which would lose HomeKit room/name/automation associations).
+        if (discoveredAccessoryUUIDs.size === 0) {
+          this.log.warn(
+            'MELView discovery returned no units; skipping stale-accessory removal to avoid',
+            'unregistering valid accessories. Existing accessories left untouched.',
+          );
+          return;
+        }
         const staleAccessories = this.accessories.filter(
           accessory => !discoveredAccessoryUUIDs.has(accessory.UUID),
         );
