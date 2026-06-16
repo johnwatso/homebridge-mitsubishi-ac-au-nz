@@ -2,7 +2,7 @@
   "pluginAlias": "MitsubishiAUNZ",
   "pluginType": "platform",
   "singular": true,
-  "headerDisplay": "Enter your Mitsubishi **Wi-Fi Control** app credentials to discover your units.",
+  "headerDisplay": "Enter your Mitsubishi **Wi-Fi Control** app credentials to discover your units. This plugin publishes **Matter** accessories, so you must enable a `matter` block on the Homebridge bridge (or this plugin's child bridge) and pair the Matter bridge into Apple Home. See the README.",
   "schema": {
     "type": "object",
     "properties": {
