@@ -10,7 +10,7 @@ This plugin is a modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://gi
 | Accessory | Single thermostat-style HAP accessory | Matter `RoomAirConditioner` (+ optional outdoor sensor) |
 | Homebridge / Node | Unspecified | Homebridge `2.0+`, Node `22`/`24` |
 | Modes | Auto / heat / cool / experimental dry | Same, matched to each unit's reported capabilities |
-| Fan speed | Not controllable | Matter FanControl, steps matched to the unit's real fan stages, auto fan where supported |
+| Fan speed | Controllable | Matter FanControl, with steps matched to the unit's real fan stages and auto fan where supported |
 | Swing | "Coming soon" | Not exposed (Homebridge's Matter wrapper has no swing handler) |
 | Dry mode | Experimental, no fan control | Optional, mapped to Matter `SystemMode.Dry` (best-effort) |
 | Outdoor temperature | — | Optional separate Matter temperature-sensor tile, placeholder readings hidden |

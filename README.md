@@ -17,6 +17,8 @@ Bring your Mitsubishi Electric **Wi-Fi Control** air conditioners and heat pumps
 
 A modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz), rebuilt for Homebridge 2.0 and **migrated from HAP to native Matter** — see [what changed](docs/modernization.md).
 
+This is a **personal fork** that I maintain for my own use — to keep the plugin current with Homebridge and Node, and to adjust it to work the way I want (for example, adding an outdoor-temperature tile). The original plugin still works well; this just lets me manage my own updates and additions. It's shared in case it's useful to others, but it isn't trying to replace the upstream project.
+
 > [!IMPORTANT]
 > **Matter required.** This plugin publishes over Matter, not HAP. You must enable a `matter` block on the Homebridge bridge it runs on, then pair the Matter bridge into Apple Home (or another ecosystem). Upgrading from the HAP version is a one-time **re-pair**. See the [Setup guide](docs/setup.md).
 
@@ -27,7 +29,7 @@ A modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/m
 The original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) pioneered MELView control but left gaps this fork closes:
 
 - **Native Matter** — one real `RoomAirConditioner`, usable across Apple Home, Google, Alexa, and SmartThings (the original was Apple-only HAP).
-- **Fan speed works** — the original couldn't control fan speed; here it's a proper Matter FanControl, with steps matched to the unit's real fan stages.
+- **Capability-matched fan speed** — Matter FanControl with the slider's steps matched to each unit's *real* fan stages, plus auto fan where supported.
 - **It feels instant** — state snaps to the new value the moment you send a command, instead of lagging until the next poll.
 - **Built for current Homebridge** — Homebridge 2.0 and Node 22/24.
 - **Harder to break** — discovery won't drop your accessories on a flaky MELView response, polling is gentle on the API, and re-authentication is handled cleanly.
