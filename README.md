@@ -17,7 +17,8 @@ Bring your Mitsubishi Electric **Wi-Fi Control** air conditioners and heat pumps
 
 This is a modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz), updated for current Node and Homebridge 2.0, with expanded HomeKit support and a focus on responsiveness and reliability. Published on npm as [`homebridge-mitsubishi-ac-au-nz`](https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz).
 
-> **Region:** built for Mitsubishi Electric units in Australia and New Zealand that pair with the **Mitsubishi Wi-Fi Control** app (MELView). If your unit shows up in that app, it's a good candidate.
+> [!NOTE]
+> **Region:** Built for Mitsubishi Electric units in Australia and New Zealand that pair with the **Mitsubishi Wi-Fi Control** app (MELView). If your unit shows up in that app, it's a good candidate.
 
 ## Contents
 - [Features](#features)
