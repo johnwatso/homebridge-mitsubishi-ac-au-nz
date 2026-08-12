@@ -1,7 +1,7 @@
 {
   "displayName": "Mitsubishi AC AU/NZ",
   "name": "homebridge-mitsubishi-ac-au-nz",
-  "version": "1.2.6",
+  "version": "1.3.0",
   "description": "Control your Mitsubishi Aircon units with Homebridge and Apple HomeKit",
   "license": "Apache-2.0",
   "funding": {
@@ -24,7 +24,8 @@
     "dist",
     "assets",
     "docs",
-    "config.schema.json"
+    "config.schema.json",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "lint": "eslint \"src/**/*.ts\" --max-warnings=0",

@@ -71,6 +71,7 @@ Minimal `config.json`:
 - **[Setup guide](docs/setup.md)** — requirements, enabling Matter, installation, config options, migrating from HAP, network notes, troubleshooting, and local development.
 - **[What changed vs the original](docs/modernization.md)** — how this fork differs from `aurc/melview-mitsubishi-au-nz`, and the HAP→Matter move.
 - **[Energy reporting notes](docs/energy-reporting.md)** — why energy isn't exposed yet and what would unblock it.
+- **[Changelog](CHANGELOG.md)** — what changed in each release.
 
 ## Roadmap
 - **Energy reporting** — the natural next step now that we're on Matter: iOS 27's native Apple Home **Energy** tab reads the Matter Electrical Power/Energy Measurement clusters. Still blocked on (1) Homebridge's Matter API exposing those clusters to plugins, and (2) confirming MELView's energy data source. Units advertising energy support are logged in the meantime. Tracked in [docs/energy-reporting.md](docs/energy-reporting.md).
