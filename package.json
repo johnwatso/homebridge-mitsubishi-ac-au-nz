@@ -22,7 +22,6 @@
   "main": "dist/index.js",
   "files": [
     "dist",
-    "assets",
     "docs",
     "config.schema.json",
     "CHANGELOG.md"
