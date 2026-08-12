@@ -22,7 +22,7 @@
         "title": "Enable Dry Mode (experimental)",
         "type": "boolean",
         "default": false,
-        "description": "Dry mode is still in development and is subject to bugs."
+        "description": "Accept dry-mode requests from Home, on units that report dry support. Dry mode is still in development and is subject to bugs."
       },
       "outdoorTemperature": {
         "title": "Expose Outdoor Temperature",

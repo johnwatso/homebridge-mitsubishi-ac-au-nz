@@ -1,18 +1,26 @@
 name: npmjs release
+
 on:
   release:
     types: [created]
+
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
+
       # Setup .npmrc file to publish to npm
-      - uses: actions/setup-node@v2
+      - uses: actions/setup-node@v5
         with:
-          node-version: '14.x'
+          # Must satisfy the "engines.node" range in package.json - "npm publish"
+          # runs prepublishOnly (lint, test, build), which needs a supported Node.
+          node-version: 22.x
+          cache: npm
           registry-url: 'https://registry.npmjs.org'
-      - run: npm install
+
+      - run: npm ci
+
       - run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

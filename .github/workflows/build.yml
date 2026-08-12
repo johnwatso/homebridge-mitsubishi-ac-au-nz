@@ -1,4 +1,4 @@
-name: Build and Lint
+name: Build, Lint and Test
 
 on: [push, pull_request]
 
@@ -7,23 +7,28 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
-        # the Node.js versions to build on
-        node-version: [10.x, 12.x, 13.x, 14.x, 15.x]
+        # Must track the "engines.node" range in package.json.
+        node-version: [22.x, 24.x]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
 
-      - name: Use Node.js ${{ matrix.node-version }} 
-        uses: actions/setup-node@v1
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint the project
         run: npm run lint
+
+      - name: Test the project
+        run: npm test
 
       - name: Build the project
         run: npm run build

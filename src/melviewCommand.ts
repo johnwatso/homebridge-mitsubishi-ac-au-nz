@@ -1,17 +1,16 @@
-import {CharacteristicValue} from 'homebridge';
 import {MelviewMitsubishiHomebridgePlatform} from './platform';
 import {Unit, WorkMode} from './data';
-import {rotationSpeedToFanCode} from './fanMapping';
 
 export interface Command {
     execute(): string;
     getUnitID(): string;
-    getLocalCommandURL(): string;
+    /** The unit's LAN endpoint, or undefined when MELView reported no local IP. */
+    getLocalCommandURL(): string | undefined;
     getLocalCommandBody(key: string): string;
 }
 
 export abstract class AbstractCommand implements Command{
-  public constructor(protected value: CharacteristicValue,
+  public constructor(protected value: number,
                           protected device: Unit,
                           protected platform: MelviewMitsubishiHomebridgePlatform) {
   }
@@ -22,8 +21,9 @@ export abstract class AbstractCommand implements Command{
       return this.device.unitid;
     }
 
-    public getLocalCommandURL(): string {
-      return 'http://' + this.device.capabilities!.localip + '/smart';
+    public getLocalCommandURL(): string | undefined {
+      const localip = this.device.capabilities?.localip;
+      return localip ? 'http://' + localip + '/smart' : undefined;
     }
 
     public getLocalCommandBody(key: string): string {
@@ -34,7 +34,7 @@ export abstract class AbstractCommand implements Command{
 
 export class CommandPower extends AbstractCommand {
   public execute(): string {
-        this.device.state!.power = this.value as number;
+        this.device.state!.power = this.value;
         return 'PW' + this.value;
   }
 }
@@ -47,11 +47,15 @@ export class CommandWorkMode extends AbstractCommand {
   }
 }
 
-export class CommandRotationSpeed extends AbstractCommand {
+/**
+ * Sets the fan speed. Takes a MELView fan code (0 = auto/off) rather than a
+ * slider percentage - the caller already knows the unit's ladder, so converting
+ * back and forth here would only lose precision.
+ */
+export class CommandFanCode extends AbstractCommand {
   public execute(): string {
-    const code = rotationSpeedToFanCode(Number(this.value), this.device.capabilities);
-    this.device.state!.setfan = code;
-    return 'FS' + code;
+    this.device.state!.setfan = this.value;
+    return 'FS' + this.value;
   }
 }
 

@@ -94,7 +94,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
         // Remove any HAP accessories left over from the pre-Matter version.
         this.removeStaleHapAccessories();
 
-        await this.melviewService!.login();
+        // discover() authenticates on demand; no need to login separately here.
         const r = await this.melviewService!.discover();
         if (!r) {
           return;
@@ -145,7 +145,8 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
 
         await this.removeStaleMatterAccessories(discoveredUUIDs);
       } catch(e) {
-        this.log.error('Failed to process platform discovery. Fix the problem and restart the service.');
+        this.log.error('Failed to process platform discovery. Fix the problem and restart the service. Cause:',
+          e instanceof Error ? e.message : String(e));
         this.log.debug(String(e));
       }
     }

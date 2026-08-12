@@ -1,4 +1,4 @@
-import {Capabilities, State, WorkMode} from './data';
+import {Capabilities, Range, State, WorkMode} from './data';
 import {fanCodeToRotationSpeed, hasAutoFan, rotationSpeedToFanCode} from './fanMapping';
 
 /**
@@ -86,27 +86,82 @@ export function workModeToSystemMode(state: State): number {
 }
 
 /**
+ * Which optional modes a given unit will actually accept. The Matter device
+ * type advertises a fixed set of thermostat modes regardless, so this gates the
+ * inbound direction: a mode the hardware can't do is refused rather than sent
+ * to MELView as a command the unit will ignore.
+ */
+export interface ModeSupport {
+    auto: boolean;
+    dry: boolean;
+    heat: boolean;
+}
+
+export function modeSupportFor(capabilities?: Capabilities, dryEnabled = false): ModeSupport {
+    return {
+        auto: capabilities?.hasautomode === 1,
+        dry: dryEnabled && capabilities?.hasdrymode === 1,
+        heat: capabilities?.hascoolonly !== 1,
+    };
+}
+
+/**
  * Inbound: a Matter systemMode write from the Home app -> the MELView power and
  * (optionally) work mode to apply. `Off` only powers down; any active mode
- * implies power on.
+ * implies power on. Returns undefined when the unit does not support the
+ * requested mode, so the caller can refuse it instead of sending a no-op.
  */
-export function systemModeToCommand(systemMode: number): { power: 0 | 1; workMode?: WorkMode } {
+export function systemModeToCommand(systemMode: number, support: ModeSupport):
+    { power: 0 | 1; workMode?: WorkMode } | undefined {
     switch (systemMode) {
         case SystemMode.Off:
             return {power: 0};
         case SystemMode.Heat:
-            return {power: 1, workMode: WorkMode.HEAT};
+            return support.heat ? {power: 1, workMode: WorkMode.HEAT} : undefined;
         case SystemMode.Cool:
             return {power: 1, workMode: WorkMode.COOL};
         case SystemMode.Auto:
-            return {power: 1, workMode: WorkMode.AUTO};
+            return support.auto ? {power: 1, workMode: WorkMode.AUTO} : undefined;
         case SystemMode.Dry:
-            return {power: 1, workMode: WorkMode.DRY};
+            return support.dry ? {power: 1, workMode: WorkMode.DRY} : undefined;
         case SystemMode.FanOnly:
             return {power: 1, workMode: WorkMode.FAN};
         default:
-            return {power: 0};
+            return undefined;
     }
+}
+
+export interface SetpointLimits {
+    cool: Range;
+    heat: Range;
+}
+
+export function clampToRange(value: number, range: Range): number {
+    return Math.min(Math.max(value, range.min), range.max);
+}
+
+/**
+ * MELView exposes a single setpoint, but Matter carries separate heating and
+ * cooling setpoints and validates each against its own limits - writing one
+ * outside its range throws a ConstraintError that drops the whole thermostat
+ * update. So clamp the single value into each range independently.
+ *
+ * Returns centi-°C, or undefined when the unit reported no usable setpoint.
+ */
+export function occupiedSetpoints(settemp: string | number | undefined, limits: SetpointLimits):
+    { occupiedCoolingSetpoint: number; occupiedHeatingSetpoint: number } | undefined {
+    const value = typeof settemp === 'number' ? settemp : Number.parseFloat(settemp ?? '');
+    if (!Number.isFinite(value)) {
+        return undefined;
+    }
+    const cool = clampToRange(value, limits.cool);
+    // Auto mode additionally rejects a heating setpoint above the cooling one,
+    // which differing per-mode limits can produce at the top of the range.
+    const heat = Math.max(Math.min(clampToRange(value, limits.heat), cool), limits.heat.min);
+    return {
+        occupiedCoolingSetpoint: Math.round(cool * 100),
+        occupiedHeatingSetpoint: Math.round(heat * 100),
+    };
 }
 
 /** Running indicator for nicer Home display. */

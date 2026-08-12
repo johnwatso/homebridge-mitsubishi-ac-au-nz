@@ -1,17 +1,22 @@
-import {MatterAccessory} from 'homebridge';
+import {FanControlState, MatterAccessory, ThermostatState} from 'homebridge';
 
 import {MelviewMitsubishiHomebridgePlatform} from './platform';
 import {Range, State, Unit, WorkMode} from './data';
 import {applyCommandResponse} from './data';
-import {CommandPower, CommandRotationSpeed, CommandTemperature, CommandWorkMode} from './melviewCommand';
+import {Command, CommandFanCode, CommandPower, CommandTemperature, CommandWorkMode} from './melviewCommand';
 import {
+    clampToRange,
     controlSequenceFor,
     fanCodeToFanMode,
     fanCodeToPercent,
     fanModeSequenceFor,
     FanMode,
     fromCentiDegrees,
+    ModeSupport,
+    modeSupportFor,
+    occupiedSetpoints,
     percentToFanCode,
+    SetpointLimits,
     systemModeToCommand,
     toCentiDegrees,
     workModeToRunningMode,
@@ -34,6 +39,7 @@ const DEFAULT_HEAT_RANGE: Range = {min: 10, max: 31};
 export class MelviewMatterAccessory {
     public readonly acUuid: string;
     public readonly outdoorUuid?: string;
+    private readonly modeSupport: ModeSupport;
     private lastFaultKey?: string;
 
     private static readonly DEFAULT_POLL_SECONDS = 10;
@@ -45,6 +51,7 @@ export class MelviewMatterAccessory {
         private readonly device: Unit,
     ) {
         this.acUuid = this.matter.uuid.generate(device.unitid);
+        this.modeSupport = modeSupportFor(device.capabilities, Boolean(platform.config.dry));
         if (this.exposesOutdoor()) {
             this.outdoorUuid = this.matter.uuid.generate(device.unitid + '-outdoor');
         }
@@ -90,8 +97,10 @@ export class MelviewMatterAccessory {
             context: {unitid: this.device.unitid},
             clusters: {
                 onOff: {onOff: this.state.power === 1},
-                thermostat: this.thermostatState(true),
-                fanControl: this.fanState(),
+                // Spread so the typed cluster states satisfy the descriptor's
+                // index-signature fallback; the helpers themselves stay strict.
+                thermostat: {...this.thermostatState(true)},
+                fanControl: {...this.fanState()},
             },
             handlers: {
                 onOff: {
@@ -131,8 +140,7 @@ export class MelviewMatterAccessory {
 
     // ---- Home -> device handlers --------------------------------------------
 
-    private async command(...commands: [CommandPower | CommandWorkMode | CommandRotationSpeed | CommandTemperature,
-        ...(CommandPower | CommandWorkMode | CommandRotationSpeed | CommandTemperature)[]]): Promise<void> {
+    private async command(...commands: [Command, ...Command[]]): Promise<void> {
         const [first, ...rest] = commands;
         const response = await this.platform.melviewService?.command(first, ...rest);
         if (response && this.device.state) {
@@ -142,40 +150,46 @@ export class MelviewMatterAccessory {
     }
 
     private applySystemMode(systemMode: number): Promise<void> {
-        const {power, workMode} = systemModeToCommand(systemMode);
-        if (power === 0) {
+        const target = systemModeToCommand(systemMode, this.modeSupport);
+        if (!target) {
+            this.platform.log.warn('Ignoring mode', systemMode, 'for', this.device.room,
+                '- the unit does not report support for it.');
+            // Push the real state back so Home doesn't sit on the rejected mode.
+            return this.pushAcState();
+        }
+        if (target.power === 0) {
             return this.command(new CommandPower(0, this.device, this.platform));
         }
         const onCmd = new CommandPower(1, this.device, this.platform);
-        if (workMode !== undefined) {
-            return this.command(onCmd, new CommandWorkMode(workMode, this.device, this.platform));
+        if (target.workMode !== undefined) {
+            return this.command(onCmd, new CommandWorkMode(target.workMode, this.device, this.platform));
         }
         return this.command(onCmd);
     }
 
     private applySetpoint(centiDegrees: number): Promise<void> {
-        const target = this.clampSetpoint(fromCentiDegrees(centiDegrees));
+        const limits = this.setpointLimits();
+        const range = this.state.setmode === WorkMode.HEAT ? limits.heat : limits.cool;
+        const target = clampToRange(fromCentiDegrees(centiDegrees), range);
         return this.command(new CommandTemperature(target, this.device, this.platform));
     }
 
     private applyFanPercent(percent: number | null): Promise<void> {
         const code = percentToFanCode(percent, this.device.capabilities);
-        return this.command(new CommandRotationSpeed(fanCodeToPercent(code, this.device.capabilities),
-            this.device, this.platform));
+        return this.command(new CommandFanCode(code, this.device, this.platform));
     }
 
     /**
      * Fan mode only needs handling for the cases the percent slider can't express:
      * Off and Auto. Numeric speed modes are driven by percentSettingChange, so we
      * ignore them here to avoid sending a duplicate command.
+     *
+     * Both Off and Auto map to fan code 0 - MELView has no "fan stopped while
+     * running" state, and reads code 0 as auto on units that support auto fan.
      */
     private applyFanMode(fanMode: number): Promise<void> | void {
-        if (fanMode === FanMode.Off) {
-            return this.command(new CommandRotationSpeed(0, this.device, this.platform));
-        }
-        if (fanMode === FanMode.Auto) {
-            // setfan 0 with auto-fan capability is interpreted as auto by MELView.
-            return this.command(new CommandRotationSpeed(0, this.device, this.platform));
+        if (fanMode === FanMode.Off || fanMode === FanMode.Auto) {
+            return this.command(new CommandFanCode(0, this.device, this.platform));
         }
     }
 
@@ -210,33 +224,30 @@ export class MelviewMatterAccessory {
 
     // ---- State mapping helpers ----------------------------------------------
 
-    private thermostatState(includeLimits: boolean): Record<string, unknown> {
-        const setpoint = toCentiDegrees(this.state.settemp);
-        const base: Record<string, unknown> = {
+    private thermostatState(includeLimits: boolean): ThermostatState {
+        const limits = this.setpointLimits();
+        const base: ThermostatState = {
             localTemperature: toCentiDegrees(this.state.roomtemp) ?? null,
             systemMode: workModeToSystemMode(this.state),
             thermostatRunningMode: workModeToRunningMode(this.state),
-            occupiedCoolingSetpoint: setpoint,
-            occupiedHeatingSetpoint: setpoint,
+            ...occupiedSetpoints(this.state.settemp, limits),
         };
         if (includeLimits) {
-            const cool = this.range(WorkMode.COOL, DEFAULT_COOL_RANGE);
-            const heat = this.range(WorkMode.HEAT, DEFAULT_HEAT_RANGE);
             base.controlSequenceOfOperation = controlSequenceFor(this.device.capabilities);
-            base.minCoolSetpointLimit = cool.min * 100;
-            base.maxCoolSetpointLimit = cool.max * 100;
-            base.absMinCoolSetpointLimit = cool.min * 100;
-            base.absMaxCoolSetpointLimit = cool.max * 100;
-            base.minHeatSetpointLimit = heat.min * 100;
-            base.maxHeatSetpointLimit = heat.max * 100;
-            base.absMinHeatSetpointLimit = heat.min * 100;
-            base.absMaxHeatSetpointLimit = heat.max * 100;
+            base.minCoolSetpointLimit = limits.cool.min * 100;
+            base.maxCoolSetpointLimit = limits.cool.max * 100;
+            base.absMinCoolSetpointLimit = limits.cool.min * 100;
+            base.absMaxCoolSetpointLimit = limits.cool.max * 100;
+            base.minHeatSetpointLimit = limits.heat.min * 100;
+            base.maxHeatSetpointLimit = limits.heat.max * 100;
+            base.absMinHeatSetpointLimit = limits.heat.min * 100;
+            base.absMaxHeatSetpointLimit = limits.heat.max * 100;
             base.minSetpointDeadBand = 0;
         }
         return base;
     }
 
-    private fanState(): Record<string, unknown> {
+    private fanState(): FanControlState {
         const percent = fanCodeToPercent(this.state.setfan, this.device.capabilities);
         return {
             fanMode: fanCodeToFanMode(this.state.setfan, this.device.capabilities),
@@ -246,14 +257,15 @@ export class MelviewMatterAccessory {
         };
     }
 
-    private range(mode: WorkMode, fallback: Range): Range {
-        return this.state.max?.[mode + ''] ?? fallback;
+    private setpointLimits(): SetpointLimits {
+        return {
+            cool: this.range(WorkMode.COOL, DEFAULT_COOL_RANGE),
+            heat: this.range(WorkMode.HEAT, DEFAULT_HEAT_RANGE),
+        };
     }
 
-    private clampSetpoint(value: number): number {
-        const mode = this.state.setmode === WorkMode.HEAT ? WorkMode.HEAT : WorkMode.COOL;
-        const range = this.range(mode, mode === WorkMode.HEAT ? DEFAULT_HEAT_RANGE : DEFAULT_COOL_RANGE);
-        return Math.min(Math.max(value, range.min), range.max);
+    private range(mode: WorkMode, fallback: Range): Range {
+        return this.state.max?.[mode + ''] ?? fallback;
     }
 
     private exposesOutdoor(): boolean {
@@ -292,7 +304,8 @@ export class MelviewMatterAccessory {
                 this.pushState().finally();
             })
             .catch(e => {
-                this.platform.log.error('Unable to find accessory status. Check the network');
+                this.platform.log.error('Unable to refresh', this.device.room, 'from MELView:',
+                    e instanceof Error ? e.message : String(e));
                 this.platform.log.debug(String(e));
             });
     }

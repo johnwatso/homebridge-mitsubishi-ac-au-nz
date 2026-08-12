@@ -108,8 +108,8 @@ For best results, the Homebridge host should be able to reach each Wi-Fi module'
 - **`Matter is not enabled for this bridge`** — add a `matter` block to the bridge (or child bridge) this plugin runs on; see [Enabling Matter](#enabling-matter).
 - **The AC doesn't appear after pairing** — confirm the Homebridge Matter bridge is paired into your ecosystem, and that the log shows `Adding new Matter accessory`. Give it a moment to publish.
 - **"Plugin has not been configured"** — add your MELView `user` and `password` in the plugin config.
-- **"Unable to find accessory status" / "Unable to access unit via direct LAN interface"** — usually network reachability: confirm the Homebridge host can reach the unit's LAN IP, and check VLAN/firewall rules. Cloud-only operation still works without the LAN path, just less snappily.
-- **Login fails / auth token errors** — verify the credentials work in the Mitsubishi Wi-Fi Control app; you may need to reset your password with Mitsubishi.
+- **"Unable to refresh … from MELView" / "Unable to access unit via direct LAN interface"** — usually network reachability: confirm the Homebridge host can reach the unit's LAN IP, and check VLAN/firewall rules. Cloud-only operation still works without the LAN path, just less snappily. The message names the cause (HTTP status, or a timeout).
+- **Login fails / auth token errors** — verify the credentials work in the Mitsubishi Wi-Fi Control app; you may need to reset your password with Mitsubishi. The session is refreshed automatically before it expires, and re-established once if MELView rejects it mid-session, so a bridge restart shouldn't be needed.
 - **A unit disappeared** — the plugin only removes accessories MELView genuinely stops reporting; a one-off empty/erroring response is ignored. If a unit was removed in MELView, it is removed here too.
 - **More detail** — enable Homebridge debug logging (`-D`) to see per-command and per-poll diagnostics.
 
@@ -123,4 +123,4 @@ npm audit        # dependency audit
 npm link         # symlink for local Homebridge testing
 ```
 
-After `npm link`, Homebridge loads the plugin from your working tree. Homebridge runs the compiled `dist/`, so re-run `npm run build` after source edits and restart Homebridge. Tests cover the pure mapping logic (fan-stage mapping, MELView↔Matter mapping, command-response merging); please keep `build`, `lint`, and `test` green.
+After `npm link`, Homebridge loads the plugin from your working tree. Homebridge runs the compiled `dist/`, so re-run `npm run build` after source edits and restart Homebridge. Tests cover the pure mapping logic (fan-stage mapping, MELView↔Matter mapping, setpoint clamping, command-response merging) and the MELView client (session handling, retries, error reporting) against a stubbed `fetch`; please keep `build`, `lint`, and `test` green.
