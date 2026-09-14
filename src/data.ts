@@ -172,3 +172,35 @@ export function applyCommandResponse(state: State, response: CommandResponse): v
         state.error = response.error;
     }
 }
+
+/**
+ * One bucket from energyreport.aspx. `used` is in Wh (the Wi-Fi Control app
+ * divides by 1000 to show kWh); the mode fields flag what the unit was doing.
+ */
+export interface EnergyEntry {
+    date: string;
+    used: number;
+    power?: number;
+    heating?: number;
+    cooling?: number;
+    auto?: number;
+    autoheat?: number;
+    autcool?: number;
+    lost?: number;
+    other?: number;
+    settemp?: number;
+}
+
+export interface EnergyReport {
+    name?: string;
+    /** The unit's timezone, e.g. `New Zealand Standard Time`; bucket dates are in this local time. */
+    timezone?: string;
+    /** Minutes from UTC. */
+    offset?: number;
+    /** Earliest date MELView holds energy data for. */
+    sdate?: string;
+    cdate?: string;
+    /** 1 when usage is estimated rather than metered by the outdoor unit. */
+    indicative?: number;
+    energy?: EnergyEntry[];
+}

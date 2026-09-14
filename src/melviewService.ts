@@ -1,6 +1,6 @@
 import {API, Logger, PlatformConfig} from 'homebridge';
 import {Cookie} from 'tough-cookie';
-import {Account, Building, Capabilities, CommandResponse, State} from './data';
+import {Account, Building, Capabilities, CommandResponse, EnergyReport, State} from './data';
 import {Command} from './melviewCommand';
 
 const URL = 'https://api.melview.net/api/';
@@ -9,6 +9,9 @@ const AUTH_SERVICE = 'login.aspx';
 const ROOMS_SERVICE = 'rooms.aspx';
 const COMMAND_SERVICE = 'unitcommand.aspx';
 const CAPABILITIES_SERVICE = 'unitcapabilities.aspx';
+const ENERGY_SERVICE = 'energyreport.aspx';
+/** API version the Wi-Fi Control app sends with energy report requests. */
+const ENERGY_API_VERSION = 5;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:54.0) Gecko/20100101 Firefox/54.0';
 
 /** Cloud calls give up rather than leaving a poll hanging forever. */
@@ -185,6 +188,23 @@ export class MelviewService {
      */
     public async getStatus(unitID: string): Promise<State> {
       return this.authedRequest<State>(COMMAND_SERVICE, {unitid: unitID});
+    }
+
+    /**
+     * Fetch hourly energy usage, as the Wi-Fi Control app's Energy page does.
+     * Only meaningful for units whose capabilities report `hasenergy`.
+     * @param unitID is the unit identifier
+     * @param startDate is the first report day, formatted `yyyy-MM-d`
+     * @param rows is how many hourly buckets to return, counting forward from that day's midnight
+     */
+    public async energyReport(unitID: string, startDate: string, rows = 48): Promise<EnergyReport> {
+      return this.authedRequest<EnergyReport>(ENERGY_SERVICE, {
+        unitid: unitID,
+        period: 'D',
+        startdate: startDate,
+        rows,
+        v: ENERGY_API_VERSION,
+      });
     }
 
     public authWillExpire(): boolean {

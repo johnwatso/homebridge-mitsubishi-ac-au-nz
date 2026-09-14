@@ -51,4 +51,4 @@ Runtime behaviours this fork adds on top of the original:
 - **Experimental** — Homebridge 2.0's Matter support is still stabilising.
 
 ## Not changed yet
-- **Energy reporting** — not exposed; blocked on Homebridge surfacing the Matter energy clusters and on confirming MELView's energy data source. See [energy-reporting.md](energy-reporting.md).
+- **Energy reporting** — cumulative energy from MELView's `energyreport.aspx` via the Matter Electrical Energy Measurement cluster (Homebridge ≥ 2.3). See [energy-reporting.md](energy-reporting.md).

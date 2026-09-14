@@ -37,6 +37,12 @@
         "minimum": 5,
         "maximum": 120,
         "description": "How often each unit refreshes its state from MELView. Commands update instantly, so this only catches changes made outside HomeKit (e.g. the wall remote). Higher values are gentler on the MELView API."
+      },
+      "energy": {
+        "title": "Report Energy Usage",
+        "type": "boolean",
+        "default": true,
+        "description": "On units with MELView Energy Monitoring, report cumulative energy use to Apple Home over Matter (iOS 27+ Energy view). MELView only publishes hourly usage, so the total can lag by up to an hour."
       }
     }
   }

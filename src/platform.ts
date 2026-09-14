@@ -13,6 +13,14 @@ import {PLATFORM_NAME, PLUGIN_NAME} from './settings';
 import {MelviewMatterAccessory} from './matterAccessory';
 import {MelviewService} from './melviewService';
 
+const DISCOVERY_RETRY_MIN_MS = 30 * 1000;
+const DISCOVERY_RETRY_MAX_MS = 10 * 60 * 1000;
+
+/** Backoff before retrying discovery: 30s, doubling to a 10 minute cap. Exported for testing. */
+export function discoveryRetryDelayMs(attempt: number): number {
+  return Math.min(DISCOVERY_RETRY_MIN_MS * 2 ** Math.max(attempt, 0), DISCOVERY_RETRY_MAX_MS);
+}
+
 /**
  * HomebridgePlatform
  *
@@ -30,6 +38,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
     private staleHapAccessories: PlatformAccessory[] = [];
     private readonly controllers = new Map<string, MelviewMatterAccessory>();
     private readonly pollingIntervals = new Set<NodeJS.Timeout>();
+    private discoveryAttempt = 0;
 
     constructor(
         public readonly log: Logger,
@@ -81,7 +90,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
       this.pollingIntervals.add(interval);
     }
 
-    async discoverDevices() {
+    async discoverDevices(): Promise<void> {
       if (!this.api.isMatterEnabled()) {
         this.log.error(
           'Matter is not enabled for this bridge. This plugin publishes Matter accessories, so it requires a',
@@ -90,65 +99,105 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
         return;
       }
 
+      let complete = false;
       try {
-        // Remove any HAP accessories left over from the pre-Matter version.
-        this.removeStaleHapAccessories();
-
-        // discover() authenticates on demand; no need to login separately here.
-        const r = await this.melviewService!.discover();
-        if (!r) {
-          return;
-        }
-
-        const discoveredUUIDs = new Set<string>();
-        const toRegister: MatterAccessory[] = [];
-        const toUpdate: MatterAccessory[] = [];
-
-        for (const b of r) {
-          this.log.info('Discovered Building [', b.buildingid, '] = \'', b.building,
-            '\' with', b.units.length, 'units!');
-          for (const device of b.units) {
-            try {
-              device.capabilities = await this.melviewService!.capabilities(device.unitid);
-              device.state = await this.melviewService!.getStatus(device.unitid);
-
-              const controller = new MelviewMatterAccessory(this, device);
-              controller.uuids().forEach(uuid => discoveredUUIDs.add(uuid));
-
-              for (const accessory of controller.buildAccessories()) {
-                if (this.cachedMatterAccessories.some(a => a.UUID === accessory.UUID)) {
-                  toUpdate.push(accessory);
-                } else {
-                  this.log.info('Adding new Matter accessory:', accessory.displayName, '[', accessory.UUID, ']');
-                  toRegister.push(accessory);
-                }
-              }
-              this.controllers.set(controller.acUuid, controller);
-            } catch (e) {
-              this.log.error('Failed to set up unit', device.room, '[', device.unitid, '] - skipping for now.');
-              this.log.debug(String(e));
-            }
-          }
-        }
-
-        if (toRegister.length > 0) {
-          await this.api.matter!.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, toRegister);
-        }
-        if (toUpdate.length > 0) {
-          await this.api.matter!.updatePlatformAccessories(toUpdate);
-        }
-
-        // Start polling once accessories are registered.
-        for (const controller of this.controllers.values()) {
-          controller.startPolling();
-        }
-
-        await this.removeStaleMatterAccessories(discoveredUUIDs);
-      } catch(e) {
-        this.log.error('Failed to process platform discovery. Fix the problem and restart the service. Cause:',
-          e instanceof Error ? e.message : String(e));
+        complete = await this.syncUnits();
+      } catch (e) {
+        this.log.error('MELView discovery failed:', e instanceof Error ? e.message : String(e));
         this.log.debug(String(e));
       }
+
+      if (complete) {
+        this.discoveryAttempt = 0;
+        return;
+      }
+      // A bridge that boots before the internet is up (e.g. after a power cut) would
+      // otherwise sit with unresponsive accessories until someone restarts it.
+      const delayMs = discoveryRetryDelayMs(this.discoveryAttempt++);
+      this.log.warn(`Retrying MELView discovery in ${Math.round(delayMs / 1000)}s.`);
+      const retry = setTimeout(() => {
+        this.pollingIntervals.delete(retry);
+        this.discoverDevices().finally();
+      }, delayMs);
+      this.registerPollingInterval(retry);
+    }
+
+    /**
+     * Set up every unit MELView lists that isn't already running. Returns false
+     * when anything still needs another attempt, so the caller retries.
+     */
+    private async syncUnits(): Promise<boolean> {
+      // Remove any HAP accessories left over from the pre-Matter version.
+      this.removeStaleHapAccessories();
+
+      // discover() authenticates on demand; no need to login separately here.
+      const buildings = await this.melviewService!.discover();
+      if (!buildings) {
+        return false;
+      }
+
+      const listedUUIDs = new Set<string>();
+      const toRegister: MatterAccessory[] = [];
+      const started: MelviewMatterAccessory[] = [];
+      let failed = 0;
+
+      for (const b of buildings) {
+        this.log.info('Discovered Building [', b.buildingid, '] = \'', b.building,
+          '\' with', b.units.length, 'units!');
+        for (const device of b.units) {
+          const running = this.controllers.get(this.api.matter!.uuid.generate(device.unitid));
+          if (running) {
+            running.uuids().forEach(uuid => listedUUIDs.add(uuid));
+            continue;
+          }
+          try {
+            device.capabilities = await this.melviewService!.capabilities(device.unitid);
+            device.state = await this.melviewService!.getStatus(device.unitid);
+
+            const controller = new MelviewMatterAccessory(this, device);
+            controller.uuids().forEach(uuid => listedUUIDs.add(uuid));
+
+            for (const accessory of controller.buildAccessories()) {
+              if (!this.cachedMatterAccessories.some(a => a.UUID === accessory.UUID)) {
+                this.log.info('Adding new Matter accessory:', accessory.displayName, '[', accessory.UUID, ']');
+              }
+              toRegister.push(accessory);
+            }
+            started.push(controller);
+          } catch (e) {
+            failed++;
+            // Keep the unit's accessories: a transient failure must not remove it
+            // from Home along with its room, scenes and automations.
+            listedUUIDs.add(this.api.matter!.uuid.generate(device.unitid));
+            listedUUIDs.add(this.api.matter!.uuid.generate(device.unitid + '-outdoor'));
+            this.log.error('Failed to set up unit', device.room, '[', device.unitid, '] - will retry:',
+              e instanceof Error ? e.message : String(e));
+            this.log.debug(String(e));
+          }
+        }
+      }
+
+      // Cached accessories are registered again too. Homebridge restores them
+      // before going online with placeholder handlers; registering attaches the
+      // real handlers to the restored endpoint, so Home keeps the same device.
+      if (toRegister.length > 0) {
+        await this.api.matter!.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, toRegister);
+      }
+
+      // Track controllers only once registered, so a failed registration is retried.
+      for (const controller of started) {
+        this.controllers.set(controller.acUuid, controller);
+        controller.startPolling();
+      }
+
+      await this.removeStaleMatterAccessories(listedUUIDs);
+
+      // An empty listing while we still hold cached accessories is treated as a
+      // MELView hiccup rather than "no units".
+      if (listedUUIDs.size === 0 && this.cachedMatterAccessories.length > 0) {
+        return false;
+      }
+      return failed === 0;
     }
 
     private removeStaleHapAccessories() {

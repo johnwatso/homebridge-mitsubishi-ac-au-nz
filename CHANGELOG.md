@@ -3,6 +3,39 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Energy reporting for iOS 27+ Apple Home.** Units with MELView Energy
+  Monitoring now publish cumulative energy (the Matter Electrical Energy
+  Measurement cluster) from MELView's hourly `energyreport.aspx` data. The
+  total is persisted per unit so it survives restarts. Turn it off with the new
+  `energy` option. An AC that's already paired may only show energy after a
+  second Homebridge restart, once the new cluster is in the Matter cache.
+
+### Fixed
+- **Home commands work again after a restart on Homebridge 2.3+.** Cached
+  accessories were passed to `updatePlatformAccessories`, which only merges
+  metadata. Homebridge 2.3+ restores cached accessories with placeholder
+  handlers and expects them to be registered again, so commands from Home were
+  never attached. Every discovered accessory is now registered, which attaches
+  the handlers to the restored endpoint without re-pairing.
+- **Recovers when MELView is unreachable at startup.** Discovery used to run
+  once, so a bridge that booted before the internet was up (e.g. after a power
+  cut) stayed unresponsive until restarted. Discovery now retries with backoff
+  (30s, doubling to 10 minutes).
+- **A unit that briefly fails to set up is no longer removed from Home.** On
+  multi-unit accounts its accessories were treated as stale and unregistered,
+  losing its room, scenes and automations. It's now kept and retried.
+- **Polls no longer overlap, and outages don't flood the log.** A slow MELView
+  reply can't stack polls on top of each other. A failing unit logs one error,
+  then a message when MELView is reachable again, instead of an error every
+  poll.
+
+### Changed
+- **Requires Homebridge 2.3.0 or later** for the Matter electrical measurement
+  clusters.
+
 ## [1.3.0] - 2026-08-13
 
 First release of the fork since the HAP→Matter migration. No configuration

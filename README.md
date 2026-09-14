@@ -70,11 +70,11 @@ Minimal `config.json`:
 ## Documentation
 - **[Setup guide](docs/setup.md)** — requirements, enabling Matter, installation, config options, migrating from HAP, network notes, troubleshooting, and local development.
 - **[What changed vs the original](docs/modernization.md)** — how this fork differs from `aurc/melview-mitsubishi-au-nz`, and the HAP→Matter move.
-- **[Energy reporting notes](docs/energy-reporting.md)** — why energy isn't exposed yet and what would unblock it.
+- **[Energy reporting](docs/energy-reporting.md)** — where MELView's energy data comes from and how it reaches Apple Home.
 - **[Changelog](CHANGELOG.md)** — what changed in each release.
 
 ## Roadmap
-- **Energy reporting** — the natural next step now that we're on Matter: iOS 27's native Apple Home **Energy** tab reads the Matter Electrical Power/Energy Measurement clusters. Still blocked on (1) Homebridge's Matter API exposing those clusters to plugins, and (2) confirming MELView's energy data source. Units advertising energy support are logged in the meantime. Tracked in [docs/energy-reporting.md](docs/energy-reporting.md).
+- **Energy reporting** — landed (unreleased): units with MELView Energy Monitoring report cumulative energy to iOS 27's Apple Home **Energy** view via the Matter Electrical Energy Measurement cluster. Still to confirm on real hardware how Apple Home presents a bridged air conditioner's usage. See [docs/energy-reporting.md](docs/energy-reporting.md).
 
 ## Credits & license
 Builds on [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) and the MELView reverse-engineering notes from [`NovaGL/diy-melview`](https://github.com/NovaGL/diy-melview). Licensed under [Apache-2.0](LICENSE).

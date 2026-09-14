@@ -1,9 +1,20 @@
+import path from 'node:path';
+
 import {FanControlState, MatterAccessory, ThermostatState} from 'homebridge';
 
 import {MelviewMitsubishiHomebridgePlatform} from './platform';
 import {Range, State, Unit, WorkMode} from './data';
 import {applyCommandResponse} from './data';
 import {Command, CommandFanCode, CommandPower, CommandTemperature, CommandWorkMode} from './melviewCommand';
+import {
+    applyHourlyUsage,
+    cumulativeWh,
+    emptyLedger,
+    EnergyLedger,
+    EnergyLedgerStore,
+    energyPollStartDate,
+    parseHourlyUsage,
+} from './energy';
 import {
     clampToRange,
     controlSequenceFor,
@@ -42,9 +53,20 @@ export class MelviewMatterAccessory {
     private readonly modeSupport: ModeSupport;
     private lastFaultKey?: string;
 
+    /** Set only when the unit reports energy monitoring and it isn't disabled in config. */
+    private readonly energyStore?: EnergyLedgerStore;
+    private energyLedger: EnergyLedger = emptyLedger();
+    /** False until a ledger is restored or the first report arrives, so Home sees null, not a fake 0. */
+    private energyKnown = false;
+    private pollInFlight = false;
+    /** True while polls are failing, so an outage is logged once rather than every poll. */
+    private pollFailing = false;
+
     private static readonly DEFAULT_POLL_SECONDS = 10;
     private static readonly MIN_POLL_SECONDS = 5;
     private static readonly MAX_POLL_SECONDS = 120;
+    /** MELView buckets usage hourly, so there's nothing to gain from polling energy often. */
+    private static readonly ENERGY_POLL_MS = 15 * 60 * 1000;
 
     constructor(
         private readonly platform: MelviewMitsubishiHomebridgePlatform,
@@ -56,10 +78,16 @@ export class MelviewMatterAccessory {
             this.outdoorUuid = this.matter.uuid.generate(device.unitid + '-outdoor');
         }
         if (device.capabilities?.hasenergy === 1) {
-            // No Matter energy clusters are exposed by Homebridge yet; just surface
-            // that the unit supports it. See docs/energy-reporting.md.
-            this.platform.log.info('ENERGY Capability:', device.room,
-                ' [REPORTED BY UNIT - native energy clusters pending, see docs/energy-reporting.md]');
+            if (platform.config.energy === false) {
+                this.platform.log.info('ENERGY Capability:', device.room, '[REPORTED BY UNIT - disabled in config]');
+            } else {
+                this.energyStore = new EnergyLedgerStore(
+                    path.join(platform.api.user.storagePath(), 'mitsubishi-ac-au-nz'), device.unitid);
+                const restored = this.energyStore.load();
+                this.energyLedger = restored ?? emptyLedger();
+                this.energyKnown = restored !== undefined;
+                this.platform.log.info('ENERGY Capability:', device.room, '[REPORTING TO HOME]');
+            }
         }
     }
 
@@ -101,6 +129,10 @@ export class MelviewMatterAccessory {
                 // index-signature fallback; the helpers themselves stay strict.
                 thermostat: {...this.thermostatState(true)},
                 fanControl: {...this.fanState()},
+                // Declaring cumulativeEnergyImported is what makes Homebridge add the
+                // ElectricalEnergyMeasurement cluster (Imported + Cumulative features).
+                ...(this.energyStore ?
+                    {electricalEnergyMeasurement: {cumulativeEnergyImported: this.energyMeasurement()}} : {}),
             },
             handlers: {
                 onOff: {
@@ -210,6 +242,15 @@ export class MelviewMatterAccessory {
         }
     }
 
+    private async pushEnergyState(): Promise<void> {
+        try {
+            await this.matter.updateAccessoryState(this.acUuid, 'electricalEnergyMeasurement',
+                {cumulativeEnergyImported: this.energyMeasurement()});
+        } catch (e) {
+            this.platform.log.debug('Failed to push energy for', this.device.room, String(e));
+        }
+    }
+
     private async pushOutdoorState(): Promise<void> {
         if (!this.outdoorUuid) {
             return;
@@ -245,6 +286,11 @@ export class MelviewMatterAccessory {
             base.minSetpointDeadBand = 0;
         }
         return base;
+    }
+
+    /** Cumulative energy in Matter mWh, or null before any reading is known. */
+    private energyMeasurement(): {energy: number} | null {
+        return this.energyKnown ? {energy: Math.round(cumulativeWh(this.energyLedger) * 1000)} : null;
     }
 
     private fanState(): FanControlState {
@@ -294,19 +340,80 @@ export class MelviewMatterAccessory {
             this.platform.registerPollingInterval(pollingInterval);
         }, jitterMs);
         this.platform.registerPollingInterval(startTimeout);
+
+        if (this.energyStore) {
+            const energyStart = setTimeout(() => {
+                this.pollEnergy();
+                const energyInterval = setInterval(() => this.pollEnergy(), MelviewMatterAccessory.ENERGY_POLL_MS);
+                this.platform.registerPollingInterval(energyInterval);
+            }, jitterMs);
+            this.platform.registerPollingInterval(energyStart);
+        }
+    }
+
+    /**
+     * Fold MELView's hourly usage into the persisted ledger and publish the new
+     * cumulative total. Energy events aren't throttled by Matter, so only push
+     * when the total actually moved.
+     */
+    private pollEnergy(): void {
+        const store = this.energyStore;
+        if (!store) {
+            return;
+        }
+        const now = new Date();
+        this.platform.melviewService?.energyReport(this.device.unitid, energyPollStartDate(now))
+            .then(async report => {
+                const usage = parseHourlyUsage(report);
+                const wasKnown = this.energyKnown;
+                const before = cumulativeWh(this.energyLedger);
+                this.energyLedger = applyHourlyUsage(this.energyLedger, usage, now);
+                this.energyKnown = true;
+                const total = cumulativeWh(this.energyLedger);
+                if (!wasKnown) {
+                    this.platform.log.info('Energy for', this.device.room + ':', usage.length, 'hourly readings,',
+                        (total / 1000).toFixed(1), 'kWh total', report?.indicative === 1 ? '(estimated by MELView)' : '');
+                }
+                store.save(this.energyLedger);
+                if (!wasKnown || total !== before) {
+                    await this.pushEnergyState();
+                }
+            })
+            .catch(e => {
+                this.platform.log.debug('Unable to refresh energy for', this.device.room, 'from MELView:',
+                    e instanceof Error ? e.message : String(e));
+            });
     }
 
     private pollOnce(): void {
-        this.platform.melviewService?.getStatus(this.device.unitid)
+        const service = this.platform.melviewService;
+        // A slow MELView reply (up to the request timeout) must not stack polls.
+        if (!service || this.pollInFlight) {
+            return;
+        }
+        this.pollInFlight = true;
+        service.getStatus(this.device.unitid)
             .then(s => {
+                if (this.pollFailing) {
+                    this.pollFailing = false;
+                    this.platform.log.info('MELView is reachable again for', this.device.room);
+                }
                 this.device.state = s;
                 this.reportFault(s);
                 this.pushState().finally();
             })
             .catch(e => {
-                this.platform.log.error('Unable to refresh', this.device.room, 'from MELView:',
-                    e instanceof Error ? e.message : String(e));
-                this.platform.log.debug(String(e));
+                const message = e instanceof Error ? e.message : String(e);
+                if (!this.pollFailing) {
+                    this.pollFailing = true;
+                    this.platform.log.error('Unable to refresh', this.device.room, 'from MELView:', message,
+                        '- retrying every poll; further failures are logged at debug level.');
+                } else {
+                    this.platform.log.debug('Still unable to refresh', this.device.room, 'from MELView:', message);
+                }
+            })
+            .finally(() => {
+                this.pollInFlight = false;
             });
     }
 
