@@ -1,6 +1,6 @@
 # Energy reporting
 
-Status: **implemented, unreleased.** Last reviewed: 2026-09-14.
+Status: **shipped in 1.4.0.** Last reviewed: 2026-09-15.
 
 Units that report MELView Energy Monitoring (`hasenergy === 1`) publish their
 cumulative energy use to Apple Home over Matter. The iOS 27+ Home app reads it

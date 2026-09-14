@@ -74,7 +74,7 @@ Minimal `config.json`:
 - **[Changelog](CHANGELOG.md)** — what changed in each release.
 
 ## Roadmap
-- **Energy reporting** — landed (unreleased): units with MELView Energy Monitoring report cumulative energy to iOS 27's Apple Home **Energy** view via the Matter Electrical Energy Measurement cluster. Still to confirm on real hardware how Apple Home presents a bridged air conditioner's usage. See [docs/energy-reporting.md](docs/energy-reporting.md).
+- **Energy reporting** — shipped in 1.4.0: units with MELView Energy Monitoring report cumulative energy to iOS 27's Apple Home **Energy** view via the Matter Electrical Energy Measurement cluster. Still to confirm on real hardware how Apple Home presents a bridged air conditioner's usage. See [docs/energy-reporting.md](docs/energy-reporting.md).
 
 ## Credits & license
 Builds on [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) and the MELView reverse-engineering notes from [`NovaGL/diy-melview`](https://github.com/NovaGL/diy-melview). Licensed under [Apache-2.0](LICENSE).

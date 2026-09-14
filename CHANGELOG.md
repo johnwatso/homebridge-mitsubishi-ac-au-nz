@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.0] - 2026-09-15
 
 ### Added
 - **Energy reporting for iOS 27+ Apple Home.** Units with MELView Energy
@@ -97,4 +97,5 @@ Not published to npm. See the
 and [what changed vs the original](docs/modernization.md) for the fork's
 Homebridge 2.0 modernisation and the HAP→Matter migration.
 
+[1.4.0]: https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases/tag/v1.4.0
 [1.3.0]: https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases/tag/v1.3.0
