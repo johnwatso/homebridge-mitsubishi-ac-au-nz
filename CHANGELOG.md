@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.1] - 2026-09-15
 
 ### Fixed
 - **The air conditioner failed to register with Matter**, so it didn't appear
@@ -112,5 +112,6 @@ Not published to npm. See the
 and [what changed vs the original](docs/modernization.md) for the fork's
 Homebridge 2.0 modernisation and the HAP→Matter migration.
 
+[1.4.1]: https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases/tag/v1.4.1
 [1.4.0]: https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases/tag/v1.4.0
 [1.3.0]: https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases/tag/v1.3.0
