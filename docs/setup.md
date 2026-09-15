@@ -95,6 +95,7 @@ Earlier versions of this plugin published over HAP. On the first launch after up
 - **Matter is experimental** — Homebridge 2.0's Matter support is still stabilising; behaviour may change with Homebridge updates.
 - **Swing / vane direction is not exposed** — Homebridge's Matter FanControl wrapper has no swing (`rockSetting`) control handler, so swing was dropped in the Matter migration.
 - **Dry mode is best-effort** — maps to Matter `SystemMode.Dry`; how Apple Home renders it is not guaranteed across iOS versions.
+- **No Auto mode or Auto fan in Home.** Homebridge's Matter air conditioner has no Auto features, and Matter refuses the accessory if they're used. A unit running in auto shows as heating or cooling. Auto fan is shown as 0%, and setting the slider to 0% selects it.
 - **Energy is cumulative only, hourly, and estimated** — MELView has no live power reading, usage lags by up to an hour, and bridged accessories may only count toward the whole-home total in Apple Home. Disable with `"energy": false`. See [energy-reporting.md](energy-reporting.md).
 - **Internet required** — MELView authentication is needed for normal operation; this is not offline-only control.
 

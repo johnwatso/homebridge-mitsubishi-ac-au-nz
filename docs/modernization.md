@@ -9,8 +9,8 @@ This plugin is a modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://gi
 | Protocol | HAP (Apple Home only) | **Native Matter** (Apple Home, Google, Alexa, SmartThings) |
 | Accessory | Single thermostat-style HAP accessory | Matter `RoomAirConditioner` (+ optional outdoor sensor) |
 | Homebridge / Node | Unspecified | Homebridge `2.0+`, Node `22`/`24` |
-| Modes | Auto / heat / cool / experimental dry | Same, matched to each unit's reported capabilities |
-| Fan speed | Controllable | Matter FanControl, with steps matched to the unit's real fan stages and auto fan where supported |
+| Modes | Auto / heat / cool / experimental dry | Heat / cool / experimental dry, matched to each unit's capabilities. Auto can't be selected from Home: Homebridge's Matter air conditioner has no Auto mode, so a unit in auto shows as heating or cooling |
+| Fan speed | Controllable | Matter FanControl, with steps matched to the unit's real fan stages and 0% selecting auto fan where supported |
 | Swing | "Coming soon" | Not exposed (Homebridge's Matter wrapper has no swing handler) |
 | Dry mode | Experimental, no fan control | Optional, mapped to Matter `SystemMode.Dry` (best-effort) |
 | Outdoor temperature | — | Optional separate Matter temperature-sensor tile, placeholder readings hidden |
@@ -26,7 +26,7 @@ This plugin is a modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://gi
 
 ## Matter model
 - **Native Matter device types only** — each unit is a `RoomAirConditioner` (OnOff + Thermostat + FanControl). No "pretend" fan accessory, no custom characteristics that only render in third-party apps.
-- **Capability-aware** — modes, fan stages, and dry are read per-unit from MELView, so the exposed controls match what each unit actually supports (cool-only and auto-capable units are detected; the fan steps match the unit's real fan stages).
+- **Capability-aware** — modes, fan stages, and dry are read per-unit from MELView, so the exposed controls match what each unit actually supports (cool-only units are detected; the fan steps match the unit's real fan stages).
 - **Outdoor temperature** is a separate Matter `TemperatureSensor` when enabled and available, with implausible/placeholder readings hidden.
 - **Multi-ecosystem** — because it's Matter, the same accessory works in Apple Home, Google Home, Alexa, and SmartThings.
 

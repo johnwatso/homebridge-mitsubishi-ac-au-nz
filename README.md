@@ -13,7 +13,7 @@
   <img src="assets/homebridge-mitsubishi-ac-au-nz.png" alt="Homebridge Mitsubishi AC AU/NZ" width="320">
 </p>
 
-Bring your Mitsubishi Electric **Wi-Fi Control** air conditioners and heat pumps into Apple Home — and Google Home, Alexa, and SmartThings. Each unit is published as a **native Matter air conditioner** via Homebridge 2.0's Matter support, with heat, cool, auto, fan speed, optional dry mode, and an optional outdoor-temperature sensor.
+Bring your Mitsubishi Electric **Wi-Fi Control** air conditioners and heat pumps into Apple Home — and Google Home, Alexa, and SmartThings. Each unit is published as a **native Matter air conditioner** via Homebridge 2.0's Matter support, with heat, cool, fan speed, optional dry mode, energy reporting, and an optional outdoor-temperature sensor.
 
 A modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz), rebuilt for Homebridge 2.0 and **migrated from HAP to native Matter** — see [what changed](docs/modernization.md).
 
@@ -29,7 +29,7 @@ This is a **personal fork** that I maintain for my own use — to keep the plugi
 The original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) pioneered MELView control but left gaps this fork closes:
 
 - **Native Matter** — one real `RoomAirConditioner`, usable across Apple Home, Google, Alexa, and SmartThings (the original was Apple-only HAP).
-- **Capability-matched fan speed** — Matter FanControl with the slider's steps matched to each unit's *real* fan stages, plus auto fan where supported.
+- **Capability-matched fan speed** — Matter FanControl with the slider's steps matched to each unit's *real* fan stages; on units with auto fan, 0% selects it.
 - **It feels instant** — state snaps to the new value the moment you send a command, instead of lagging until the next poll.
 - **Built for current Homebridge** — Homebridge 2.0 and Node 22/24.
 - **Harder to break** — discovery won't drop your accessories on a flaky MELView response, polling is gentle on the API, and re-authentication is handled cleanly.
@@ -38,8 +38,8 @@ Full breakdown: [what changed vs the original](docs/modernization.md).
 
 ## Features
 - **Native Matter Air Conditioner** — Apple Home renders it as an AC/thermostat tile.
-- **Power** and **mode** (heat / cool / auto), matched to each unit's real capabilities.
-- **Fan speed** via the Matter FanControl cluster, with auto fan where supported.
+- **Power** and **mode** (heat / cool), matched to each unit's real capabilities. A unit set to auto on the remote or app shows as heating or cooling, depending on what it's doing. Homebridge's Matter air conditioner has no Auto mode to select.
+- **Fan speed** via the Matter FanControl cluster; on units with auto fan, 0% selects it.
 - **Target & room temperature** within each unit's supported range.
 - **Outdoor temperature** *(optional)* — as a separate Matter temperature-sensor tile.
 - **Dry mode** *(optional)* — maps to Matter `SystemMode.Dry` (best-effort).

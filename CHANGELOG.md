@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **The air conditioner failed to register with Matter**, so it didn't appear
+  in Home ("Behaviors have errors"). Homebridge's Matter air conditioner has a
+  thermostat without the AutoMode feature and a fan without the Auto feature.
+  The plugin set `minSetpointDeadBand`, `thermostatRunningMode`, the Auto
+  system mode, the Auto fan mode and the `OffLowMedHighAuto` fan sequence,
+  all of which Matter rejects without those features. They're no longer set:
+  - a unit running in auto shows as heating or cooling
+  - auto fan is shown as 0%, and setting 0% selects it
+
+  Checked against Homebridge 2.4's registration pipeline with matter.js for
+  every mode, fan and capability combination.
+
 ## [1.4.0] - 2026-09-15
 
 ### Added

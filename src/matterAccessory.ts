@@ -20,8 +20,8 @@ import {
     controlSequenceFor,
     fanCodeToFanMode,
     fanCodeToPercent,
-    fanModeSequenceFor,
     FanMode,
+    FanModeSequence,
     fromCentiDegrees,
     ModeSupport,
     modeSupportFor,
@@ -30,7 +30,6 @@ import {
     SetpointLimits,
     systemModeToCommand,
     toCentiDegrees,
-    workModeToRunningMode,
     workModeToSystemMode,
 } from './matterMapping';
 
@@ -265,12 +264,16 @@ export class MelviewMatterAccessory {
 
     // ---- State mapping helpers ----------------------------------------------
 
+    /**
+     * Only attributes the Heating+Cooling thermostat allows: thermostatRunningMode
+     * and minSetpointDeadBand need the AutoMode feature, and Matter refuses to
+     * register the accessory if they are set without it.
+     */
     private thermostatState(includeLimits: boolean): ThermostatState {
         const limits = this.setpointLimits();
         const base: ThermostatState = {
             localTemperature: toCentiDegrees(this.state.roomtemp) ?? null,
             systemMode: workModeToSystemMode(this.state),
-            thermostatRunningMode: workModeToRunningMode(this.state),
             ...occupiedSetpoints(this.state.settemp, limits),
         };
         if (includeLimits) {
@@ -283,7 +286,6 @@ export class MelviewMatterAccessory {
             base.maxHeatSetpointLimit = limits.heat.max * 100;
             base.absMinHeatSetpointLimit = limits.heat.min * 100;
             base.absMaxHeatSetpointLimit = limits.heat.max * 100;
-            base.minSetpointDeadBand = 0;
         }
         return base;
     }
@@ -297,7 +299,7 @@ export class MelviewMatterAccessory {
         const percent = fanCodeToPercent(this.state.setfan, this.device.capabilities);
         return {
             fanMode: fanCodeToFanMode(this.state.setfan, this.device.capabilities),
-            fanModeSequence: fanModeSequenceFor(this.device.capabilities),
+            fanModeSequence: FanModeSequence.OffLowMedHigh,
             percentSetting: percent,
             percentCurrent: percent,
         };

@@ -1,5 +1,5 @@
 import {Capabilities, Range, State, WorkMode} from './data';
-import {fanCodeToRotationSpeed, hasAutoFan, rotationSpeedToFanCode} from './fanMapping';
+import {fanCodeToRotationSpeed, rotationSpeedToFanCode} from './fanMapping';
 
 /**
  * Pure translation between MELView state and Matter cluster state.
@@ -27,13 +27,6 @@ export const ControlSequenceOfOperation = {
     CoolingAndHeating: 4,
 } as const;
 
-/** Matter Thermostat::ThermostatRunningMode */
-export const ThermostatRunningMode = {
-    Off: 0,
-    Cool: 3,
-    Heat: 4,
-} as const;
-
 /** Matter FanControl::FanMode */
 export const FanMode = {
     Off: 0,
@@ -44,10 +37,13 @@ export const FanMode = {
     Auto: 5,
 } as const;
 
-/** Matter FanControl::FanModeSequence */
+/**
+ * Matter FanControl::FanModeSequence. Only the non-auto sequence: Homebridge
+ * backs fanControl handlers with a FanControl server that has no Auto feature,
+ * so Matter rejects the Auto sequences and the Auto fan mode.
+ */
 export const FanModeSequence = {
     OffLowMedHigh: 0,
-    OffLowMedHighAuto: 2,
 } as const;
 
 /** Matter temperatures are int16 in 0.01 °C. */
@@ -64,7 +60,13 @@ export function fromCentiDegrees(centi: number): number {
     return centi / 100;
 }
 
-/** MELView work mode + power -> Matter Thermostat systemMode. */
+/**
+ * MELView work mode + power -> Matter Thermostat systemMode.
+ *
+ * Homebridge's RoomAirConditioner thermostat has no AutoMode feature, and Matter
+ * rejects the Auto systemMode (and the AutoMode-only attributes) without it. So
+ * a unit running in auto is shown as whichever way it is currently working.
+ */
 export function workModeToSystemMode(state: State): number {
     if (state.power === 0) {
         return SystemMode.Off;
@@ -75,7 +77,8 @@ export function workModeToSystemMode(state: State): number {
         case WorkMode.COOL:
             return SystemMode.Cool;
         case WorkMode.AUTO:
-            return SystemMode.Auto;
+            return Number.parseFloat(state.roomtemp) < Number.parseFloat(state.settemp) ?
+                SystemMode.Heat : SystemMode.Cool;
         case WorkMode.DRY:
             return SystemMode.Dry;
         case WorkMode.FAN:
@@ -164,24 +167,6 @@ export function occupiedSetpoints(settemp: string | number | undefined, limits: 
     };
 }
 
-/** Running indicator for nicer Home display. */
-export function workModeToRunningMode(state: State): number {
-    if (state.power === 0) {
-        return ThermostatRunningMode.Off;
-    }
-    switch (state.setmode) {
-        case WorkMode.HEAT:
-            return ThermostatRunningMode.Heat;
-        case WorkMode.COOL:
-            return ThermostatRunningMode.Cool;
-        case WorkMode.AUTO:
-            return Number.parseFloat(state.roomtemp) < Number.parseFloat(state.settemp) ?
-                ThermostatRunningMode.Heat : ThermostatRunningMode.Cool;
-        default:
-            return ThermostatRunningMode.Off;
-    }
-}
-
 export function controlSequenceFor(capabilities?: Capabilities): number {
     if (capabilities?.hascoolonly === 1) {
         return ControlSequenceOfOperation.CoolingOnly;
@@ -189,10 +174,14 @@ export function controlSequenceFor(capabilities?: Capabilities): number {
     return ControlSequenceOfOperation.CoolingAndHeating;
 }
 
-/** MELView fan code -> Matter FanControl fanMode. */
+/**
+ * MELView fan code -> Matter FanControl fanMode. Code 0 (auto fan, or no speed)
+ * is reported as Off/0%: Matter has no Auto fan mode here, and 0% is also what
+ * Home sends back to select auto fan.
+ */
 export function fanCodeToFanMode(setfan: number | undefined, capabilities?: Capabilities): number {
     if (setfan === 0) {
-        return hasAutoFan(capabilities) ? FanMode.Auto : FanMode.Off;
+        return FanMode.Off;
     }
     const percent = fanCodeToRotationSpeed(setfan, capabilities) as number;
     if (percent <= 33) {
@@ -214,6 +203,3 @@ export function percentToFanCode(percent: number | null, capabilities?: Capabili
     return rotationSpeedToFanCode(percent ?? 0, capabilities);
 }
 
-export function fanModeSequenceFor(capabilities?: Capabilities): number {
-    return hasAutoFan(capabilities) ? FanModeSequence.OffLowMedHighAuto : FanModeSequence.OffLowMedHigh;
-}

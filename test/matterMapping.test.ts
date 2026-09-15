@@ -15,7 +15,6 @@ import {
     percentToFanCode,
     SystemMode,
     systemModeToCommand,
-    ThermostatRunningMode,
     toCentiDegrees,
     workModeToSystemMode,
 } from '../src/matterMapping';
@@ -40,9 +39,15 @@ test('work mode maps to Matter systemMode, off when unpowered', () => {
     assert.equal(workModeToSystemMode({power: 0, setmode: WorkMode.COOL} as State), SystemMode.Off);
     assert.equal(workModeToSystemMode({power: 1, setmode: WorkMode.HEAT} as State), SystemMode.Heat);
     assert.equal(workModeToSystemMode({power: 1, setmode: WorkMode.COOL} as State), SystemMode.Cool);
-    assert.equal(workModeToSystemMode({power: 1, setmode: WorkMode.AUTO} as State), SystemMode.Auto);
     assert.equal(workModeToSystemMode({power: 1, setmode: WorkMode.DRY} as State), SystemMode.Dry);
     assert.equal(workModeToSystemMode({power: 1, setmode: WorkMode.FAN} as State), SystemMode.FanOnly);
+});
+
+test('auto work mode shows as heat or cool, since the thermostat has no AutoMode feature', () => {
+    // Regression: SystemMode.Auto without AutoMode made Matter refuse to register the accessory.
+    const auto = {power: 1, setmode: WorkMode.AUTO, settemp: '22'};
+    assert.equal(workModeToSystemMode({...auto, roomtemp: '19'} as State), SystemMode.Heat);
+    assert.equal(workModeToSystemMode({...auto, roomtemp: '25'} as State), SystemMode.Cool);
 });
 
 test('inbound systemMode maps to power + work mode', () => {
@@ -124,11 +129,6 @@ test('the hand-written Matter enum values match the spec definitions', () => {
         HeatingOnly: clusters.Thermostat.ControlSequenceOfOperation.HeatingOnly,
         CoolingAndHeating: clusters.Thermostat.ControlSequenceOfOperation.CoolingAndHeating,
     });
-    assert.deepEqual({...ThermostatRunningMode}, {
-        Off: clusters.Thermostat.ThermostatRunningMode.Off,
-        Cool: clusters.Thermostat.ThermostatRunningMode.Cool,
-        Heat: clusters.Thermostat.ThermostatRunningMode.Heat,
-    });
     assert.deepEqual({...FanMode}, {
         Off: clusters.FanControl.FanMode.Off,
         Low: clusters.FanControl.FanMode.Low,
@@ -139,7 +139,6 @@ test('the hand-written Matter enum values match the spec definitions', () => {
     });
     assert.deepEqual({...FanModeSequence}, {
         OffLowMedHigh: clusters.FanControl.FanModeSequence.OffLowMedHigh,
-        OffLowMedHighAuto: clusters.FanControl.FanModeSequence.OffLowMedHighAuto,
     });
 });
 
@@ -157,8 +156,12 @@ test('fan code maps to Matter fanMode buckets (5-stage)', () => {
     assert.equal(fanCodeToFanMode(0, c), FanMode.Off);
 });
 
-test('fan code 0 maps to Auto when the unit supports auto fan', () => {
-    assert.equal(fanCodeToFanMode(0, caps({fanstage: 5, hasautofan: 1})), FanMode.Auto);
+test('auto fan is reported as 0%/Off and selected by 0%', () => {
+    // Regression: FanMode.Auto needs a FanControl Auto feature Homebridge doesn't provide.
+    const c = caps({fanstage: 5, hasautofan: 1});
+    assert.equal(fanCodeToFanMode(0, c), FanMode.Off);
+    assert.equal(fanCodeToPercent(0, c), 0);
+    assert.equal(percentToFanCode(0, c), 0);
 });
 
 test('fan percent round-trips through code mapping (5-stage)', () => {
