@@ -3,6 +3,8 @@ import {Unit, WorkMode} from './data';
 
 export interface Command {
     execute(): string;
+    /** Apply the requested value after MELView has accepted the command. */
+    apply(): void;
     getUnitID(): string;
     /** The unit's LAN endpoint, or undefined when MELView reported no local IP. */
     getLocalCommandURL(): string | undefined;
@@ -16,6 +18,7 @@ export abstract class AbstractCommand implements Command{
   }
 
     public abstract execute(): string;
+    public abstract apply(): void;
 
     public getUnitID(): string {
       return this.device.unitid;
@@ -34,16 +37,21 @@ export abstract class AbstractCommand implements Command{
 
 export class CommandPower extends AbstractCommand {
   public execute(): string {
-        this.device.state!.power = this.value;
         return 'PW' + this.value;
+  }
+
+  public apply(): void {
+    this.device.state!.power = this.value;
   }
 }
 
 export class CommandWorkMode extends AbstractCommand {
   public execute(): string {
-    const workMode = this.value as WorkMode;
-    this.device.state!.setmode = workMode;
-    return 'MD' + workMode;
+    return 'MD' + this.value;
+  }
+
+  public apply(): void {
+    this.device.state!.setmode = this.value as WorkMode;
   }
 }
 
@@ -54,14 +62,20 @@ export class CommandWorkMode extends AbstractCommand {
  */
 export class CommandFanCode extends AbstractCommand {
   public execute(): string {
-    this.device.state!.setfan = this.value;
     return 'FS' + this.value;
+  }
+
+  public apply(): void {
+    this.device.state!.setfan = this.value;
   }
 }
 
 export class CommandTemperature extends AbstractCommand {
   public execute(): string {
-        this.device.state!.settemp = String(this.value);
-        return 'TS' + this.device.state!.settemp;
+        return 'TS' + this.value;
+  }
+
+  public apply(): void {
+    this.device.state!.settemp = String(this.value);
   }
 }

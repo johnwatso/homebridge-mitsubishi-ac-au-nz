@@ -4,7 +4,7 @@
   <a href="https://www.npmjs.com/package/homebridge-mitsubishi-ac-au-nz"><img src="https://img.shields.io/npm/v/homebridge-mitsubishi-ac-au-nz.svg" alt="npm version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-22%20%7C%2024-339933.svg" alt="Node.js"></a>
-  <a href="https://homebridge.io/"><img src="https://img.shields.io/badge/homebridge-%3E%3D2.0-purple.svg" alt="Homebridge"></a>
+  <a href="https://homebridge.io/"><img src="https://img.shields.io/badge/homebridge-%3E%3D2.3-purple.svg" alt="Homebridge"></a>
   <a href="#features"><img src="https://img.shields.io/badge/Matter-Air%20Conditioner-0f7fff.svg" alt="Matter AC"></a>
   <a href="docs/setup.md#network-notes"><img src="https://img.shields.io/badge/control-MELView%20%2B%20LAN-success.svg" alt="MELView assisted LAN"></a>
 </p>
@@ -31,7 +31,7 @@ The original [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-m
 - **Native Matter** — one real `RoomAirConditioner`, usable across Apple Home, Google, Alexa, and SmartThings (the original was Apple-only HAP).
 - **Capability-matched fan speed** — Matter FanControl with the slider's steps matched to each unit's *real* fan stages; on units with auto fan, 0% selects it.
 - **It feels instant** — state snaps to the new value the moment you send a command, instead of lagging until the next poll.
-- **Built for current Homebridge** — Homebridge 2.0 and Node 22/24.
+- **Built for current Homebridge** — Homebridge 2.3+ and Node 22/24.
 - **Harder to break** — discovery won't drop your accessories on a flaky MELView response, polling is gentle on the API, and re-authentication is handled cleanly.
 
 Full breakdown: [what changed vs the original](docs/modernization.md).
@@ -51,7 +51,7 @@ Native Matter device types only — no custom characteristics, no "pretend" fan 
 > **Swing is not exposed.** Homebridge's Matter FanControl wrapper has no swing (`rockSetting`) control handler, so swing was dropped in the move to Matter. See [Known limitations](docs/setup.md#known-limitations).
 
 ## Quick start
-1. Install [Homebridge](https://homebridge.io/) `2.0+` on Node `22`/`24`, and **enable Matter** on the bridge (a `matter` block in the bridge config).
+1. Install [Homebridge](https://homebridge.io/) `2.3+` on Node `22`/`24`, and **enable Matter** on the bridge (a `matter` block in the bridge config).
 2. In the Homebridge Config UI, install **`homebridge-mitsubishi-ac-au-nz`** and enter your MELView credentials.
 3. Restart Homebridge, then **pair the Matter bridge** into Apple Home using the code shown in the Homebridge UI.
 
@@ -73,8 +73,8 @@ Minimal `config.json`:
 - **[Energy reporting](docs/energy-reporting.md)** — where MELView's energy data comes from and how it reaches Apple Home.
 - **[Changelog](CHANGELOG.md)** — what changed in each release.
 
-## Roadmap
-- **Energy reporting** — shipped in 1.4.0: units with MELView Energy Monitoring report cumulative energy to iOS 27's Apple Home **Energy** view via the Matter Electrical Energy Measurement cluster. Still to confirm on real hardware how Apple Home presents a bridged air conditioner's usage. See [docs/energy-reporting.md](docs/energy-reporting.md).
+## Energy reporting
+Units with MELView Energy Monitoring report cumulative energy to iOS 27's Apple Home **Energy** view via the Matter Electrical Energy Measurement cluster. This shipped in 1.4.0 and requires Homebridge 2.3+. See [docs/energy-reporting.md](docs/energy-reporting.md) for data-source and display caveats.
 
 ## Credits & license
 Builds on [`aurc/melview-mitsubishi-au-nz`](https://github.com/aurc/melview-mitsubishi-au-nz) and the MELView reverse-engineering notes from [`NovaGL/diy-melview`](https://github.com/NovaGL/diy-melview). Licensed under [Apache-2.0](LICENSE).

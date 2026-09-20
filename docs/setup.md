@@ -15,7 +15,7 @@ Full installation, configuration, and troubleshooting for **homebridge-mitsubish
 - [Local development](#local-development)
 
 ## Requirements
-- **Homebridge** `>= 2.0.0` with **Matter enabled** on the bridge this plugin runs on (see [Enabling Matter](#enabling-matter))
+- **Homebridge** `>= 2.3.0` with **Matter enabled** on the bridge this plugin runs on (see [Enabling Matter](#enabling-matter))
 - **Node.js** `22` or `24`
 - A **Mitsubishi Wi-Fi Control / MELView** account with your units already added in the app
 - Network reachability from the Homebridge host to each unit's LAN IP (see [Network notes](#network-notes))
@@ -40,7 +40,7 @@ The plugin exposes each unit as a Matter `RoomAirConditioner` (OnOff + Thermosta
 
 ## Installation
 **Config UI (recommended)**
-1. Install [Homebridge](https://homebridge.io/) `2.0+`.
+1. Install [Homebridge](https://homebridge.io/) `2.3+`.
 2. Search for **`homebridge-mitsubishi-ac-au-nz`** and install it.
 3. Enter your Mitsubishi Wi-Fi Control account credentials.
 4. [Enable Matter](#enabling-matter) and restart Homebridge.
@@ -57,7 +57,7 @@ This plugin publishes Matter accessories, so Matter must be enabled on the bridg
 2. Restart Homebridge. A **Matter pairing code** appears in the Homebridge log and Config UI.
 3. Add that code to Apple Home (or Google Home / Alexa / SmartThings) like any Matter accessory.
 
-See the [Homebridge Matter docs](https://github.com/homebridge-plugins/homebridge-matter/wiki/Enabling-Matter). Matter support in Homebridge 2.0 is still **experimental**.
+See the [Homebridge Matter docs](https://github.com/homebridge-plugins/homebridge-matter/wiki/Enabling-Matter). Homebridge's Matter support is still **experimental**.
 
 ## Configuration
 Add the platform to your Homebridge `config.json`:
@@ -69,7 +69,8 @@ Add the platform to your Homebridge `config.json`:
   "password": "your-password",
   "dry": false,
   "outdoorTemperature": false,
-  "pollInterval": 10
+  "pollInterval": 10,
+  "energy": true
 }
 ```
 
@@ -81,6 +82,7 @@ Add the platform to your Homebridge `config.json`:
 | `dry` | No | `false` | Map supported units' dry mode to Matter `SystemMode.Dry` (best-effort; see [Known limitations](#known-limitations)). |
 | `outdoorTemperature` | No | `false` | Expose MELView outdoor temperature as a separate Matter temperature sensor when available. |
 | `pollInterval` | No | `10` | Seconds between MELView state refreshes (range `5`–`120`). Commands update instantly, so this only catches changes made outside Apple Home (e.g. the wall remote). Higher is gentler on the MELView API. |
+| `energy` | No | `true` | Publish cumulative Matter energy usage for units that report MELView Energy Monitoring. Requires Homebridge 2.3+; see [energy-reporting.md](energy-reporting.md). |
 
 > [!TIP]
 > **Outdoor temperature tile:** Apple Home pools every temperature sensor in a room into that room's climate summary. If the outdoor sensor sits in the same room as the indoor unit, it pulls that room's average toward the outdoor reading. Assign the outdoor tile to a different room if that bothers you — the AC's own current-temperature reading is unaffected either way.
@@ -92,7 +94,7 @@ Earlier versions of this plugin published over HAP. On the first launch after up
 > Because Matter is a separate pairing, this is a **breaking change**: the old AC tiles disappear and you must pair the Matter bridge and re-add the units. Room assignments, names, and automations that referenced the old HAP accessories need to be set up again.
 
 ## Known limitations
-- **Matter is experimental** — Homebridge 2.0's Matter support is still stabilising; behaviour may change with Homebridge updates.
+- **Matter is experimental** — Homebridge's Matter support is still stabilising; behaviour may change with Homebridge updates.
 - **Swing / vane direction is not exposed** — Homebridge's Matter FanControl wrapper has no swing (`rockSetting`) control handler, so swing was dropped in the Matter migration.
 - **Dry mode is best-effort** — maps to Matter `SystemMode.Dry`; how Apple Home renders it is not guaranteed across iOS versions.
 - **No Auto mode or Auto fan in Home.** Homebridge's Matter air conditioner has no Auto features, and Matter refuses the accessory if they're used. A unit running in auto shows as heating or cooling. Auto fan is shown as 0%, and setting the slider to 0% selects it.

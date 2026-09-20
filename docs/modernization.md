@@ -8,19 +8,20 @@ This plugin is a modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://gi
 | :--- | :--- | :--- |
 | Protocol | HAP (Apple Home only) | **Native Matter** (Apple Home, Google, Alexa, SmartThings) |
 | Accessory | Single thermostat-style HAP accessory | Matter `RoomAirConditioner` (+ optional outdoor sensor) |
-| Homebridge / Node | Unspecified | Homebridge `2.0+`, Node `22`/`24` |
+| Homebridge / Node | Unspecified | Homebridge `2.3+`, Node `22`/`24` |
 | Modes | Auto / heat / cool / experimental dry | Heat / cool / experimental dry, matched to each unit's capabilities. Auto can't be selected from Home: Homebridge's Matter air conditioner has no Auto mode, so a unit in auto shows as heating or cooling |
 | Fan speed | Controllable | Matter FanControl, with steps matched to the unit's real fan stages and 0% selecting auto fan where supported |
 | Swing | "Coming soon" | Not exposed (Homebridge's Matter wrapper has no swing handler) |
 | Dry mode | Experimental, no fan control | Optional, mapped to Matter `SystemMode.Dry` (best-effort) |
 | Outdoor temperature | — | Optional separate Matter temperature-sensor tile, placeholder readings hidden |
+| Energy reporting | — | Optional cumulative Matter energy measurement on supported units |
 | Command feedback | Wait for next poll | State applied immediately from the command response |
 | Polling | Fixed | Configurable interval, staggered across units |
 | Resilience | — | Per-unit isolation, de-duped re-auth, empty-listing guard |
 | Tests | — | Unit tests for the pure mapping logic |
 
 ## Platform & tooling
-- Targets **Homebridge 2.0+** and **Node 22/24**, building against the current Homebridge 2 Matter API (`api.matter`).
+- Targets **Homebridge 2.3+** and **Node 22/24**, building against the current Homebridge 2 Matter API (`api.matter`).
 - Registers Matter accessories once and restores them from cache cleanly (`configureMatterAccessory`); removes the old HAP accessories from previous versions automatically on first launch.
 - Stricter TypeScript, refreshed dependencies and lockfile, and a small unit-test suite (`npm test`).
 
@@ -48,7 +49,7 @@ Runtime behaviours this fork adds on top of the original:
 - **Swing dropped** — Homebridge's Matter FanControl wrapper exposes no swing (`rockSetting`) handler, so swing isn't controllable until Homebridge adds it. The HAP version had a swing on/off toggle.
 - **Dry mode** is best-effort (`SystemMode.Dry`); Apple Home's rendering isn't guaranteed across iOS versions.
 - **Re-pair required** — Matter is a separate pairing, so upgrading from the HAP version means re-adding the units. See [Setup → Migrating from the HAP version](setup.md#migrating-from-the-hap-version).
-- **Experimental** — Homebridge 2.0's Matter support is still stabilising.
+- **Experimental** — Homebridge's Matter support is still stabilising.
 
-## Not changed yet
-- **Energy reporting** — cumulative energy from MELView's `energyreport.aspx` via the Matter Electrical Energy Measurement cluster (Homebridge ≥ 2.3). See [energy-reporting.md](energy-reporting.md).
+## Energy reporting
+- **Cumulative usage** — supported units publish MELView's hourly `energyreport.aspx` data through the Matter Electrical Energy Measurement cluster. The persisted total never decreases and can be disabled in config. See [energy-reporting.md](energy-reporting.md).

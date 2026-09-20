@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {API, Logger, PlatformConfig} from 'homebridge';
 import {Cookie} from 'tough-cookie';
 import {AUTH_REFRESH_MARGIN_MS, cookieExpiresWithin, MelviewService, parseAuthCookie} from '../src/melviewService';
+import {Command} from '../src/melviewCommand';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -42,6 +43,16 @@ function loginResponse(): Response {
         status: 200,
         headers: [['set-cookie', `auth=TOKEN; Expires=${new Date(Date.now() + 24 * HOUR_MS).toUTCString()}; Path=/`]],
     });
+}
+
+function command(): Command {
+    return {
+        execute: () => 'PW1',
+        apply: () => undefined,
+        getUnitID: () => 'u1',
+        getLocalCommandURL: () => undefined,
+        getLocalCommandBody: () => '<ESV>TOKEN</ESV>',
+    };
 }
 
 const realFetch = globalThis.fetch;
@@ -88,6 +99,23 @@ test('login surfaces the HTTP status instead of a generic network error', async 
 test('login rejects a response that carries no auth cookie', async () => {
     stubFetch([new Response(JSON.stringify({id: 1}), {status: 200})]);
     await assert.rejects(service().login(), /Unable to get auth token/);
+});
+
+test('a malformed login response does not retain its auth cookie', async () => {
+    const malformedLogin = new Response('<html>broken</html>', {
+        status: 200,
+        headers: [['set-cookie', `auth=BAD; Expires=${new Date(Date.now() + 24 * HOUR_MS).toUTCString()}; Path=/`]],
+    });
+    const {calls} = stubFetch([
+        malformedLogin,
+        loginResponse(),
+        new Response(JSON.stringify({id: 'u1', power: 1}), {status: 200}),
+    ]);
+    const s = service();
+
+    await assert.rejects(s.login(), /Failed to parse/);
+    assert.equal((await s.getStatus('u1')).power, 1);
+    assert.equal(calls.filter(call => call.url.endsWith('login.aspx')).length, 2);
 });
 
 test('an expired session (HTML login page under a 200) triggers one re-login and retry', async () => {
@@ -138,4 +166,13 @@ test('concurrent callers share a single login', async () => {
     await Promise.all([s.getStatus('u1'), s.getStatus('u2')]);
 
     assert.equal(calls.filter(c => c.url.endsWith('login.aspx')).length, 1);
+});
+
+test('a rejected command is surfaced instead of being treated as accepted', async () => {
+    stubFetch([
+        loginResponse(),
+        new Response(JSON.stringify({error: 'unit offline', lc: ''}), {status: 200}),
+    ]);
+
+    await assert.rejects(service().command(command()), /rejected command.*unit offline/);
 });

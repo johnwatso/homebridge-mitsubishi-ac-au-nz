@@ -60,6 +60,8 @@ export class MelviewMatterAccessory {
     private pollInFlight = false;
     /** True while polls are failing, so an outage is logged once rather than every poll. */
     private pollFailing = false;
+    /** Home may send related writes together; keep each unit's MELView commands ordered. */
+    private commandQueue: Promise<void> = Promise.resolve();
 
     private static readonly DEFAULT_POLL_SECONDS = 10;
     private static readonly MIN_POLL_SECONDS = 5;
@@ -171,10 +173,22 @@ export class MelviewMatterAccessory {
 
     // ---- Home -> device handlers --------------------------------------------
 
-    private async command(...commands: [Command, ...Command[]]): Promise<void> {
+    private command(...commands: [Command, ...Command[]]): Promise<void> {
+        const task = this.commandQueue.then(() => this.executeCommand(commands));
+        // Keep the queue usable after a rejected command while still returning
+        // the rejection to the Matter handler that initiated it.
+        this.commandQueue = task.catch(() => undefined);
+        return task;
+    }
+
+    private async executeCommand(commands: [Command, ...Command[]]): Promise<void> {
         const [first, ...rest] = commands;
         const response = await this.platform.melviewService?.command(first, ...rest);
         if (response && this.device.state) {
+            // The request succeeded. Apply the requested values first so an
+            // abbreviated response still updates immediately, then let every
+            // authoritative field MELView returned win.
+            commands.forEach(command => command.apply());
             applyCommandResponse(this.device.state, response);
         }
         await this.pushAcState();

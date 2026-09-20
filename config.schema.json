@@ -28,7 +28,7 @@
         "title": "Expose Outdoor Temperature",
         "type": "boolean",
         "default": false,
-        "description": "Expose the MELView outdoor temperature reading as a linked HomeKit temperature sensor when available."
+        "description": "Expose the MELView outdoor temperature reading as a separate Matter temperature sensor when available."
       },
       "pollInterval": {
         "title": "Poll Interval (seconds)",
@@ -36,7 +36,7 @@
         "default": 10,
         "minimum": 5,
         "maximum": 120,
-        "description": "How often each unit refreshes its state from MELView. Commands update instantly, so this only catches changes made outside HomeKit (e.g. the wall remote). Higher values are gentler on the MELView API."
+        "description": "How often each unit refreshes its state from MELView. Commands update instantly, so this only catches changes made outside Home (e.g. the wall remote). Higher values are gentler on the MELView API."
       },
       "energy": {
         "title": "Report Energy Usage",

@@ -115,13 +115,17 @@ export class MelviewService {
       }
 
       const body = await response.text();
-      this.auth = parseAuthCookie(response.headers.getSetCookie());
-      if (!this.auth) {
+      const auth = parseAuthCookie(response.headers.getSetCookie());
+      if (!auth) {
         throw new Error('Unable to get auth token from MelView. You may need to reset your password with Mitsubishi');
       }
 
       try {
-        return JSON.parse(body) as Account;
+        const account = JSON.parse(body) as Account;
+        // Do not retain a cookie from a malformed login response. Keeping it
+        // would make the next discovery skip login and fail less clearly.
+        this.auth = auth;
+        return account;
       } catch {
         throw new Error(`Failed to parse the login response from Melview: ${excerpt(body)}`);
       }
@@ -176,7 +180,10 @@ export class MelviewService {
       this.log.debug('cmd:', JSON.stringify(payload));
 
       const rBody = await this.authedRequest<CommandResponse>(COMMAND_SERVICE, payload);
-      if (rBody.error === 'ok' && rBody.lc && rBody.lc.length > 0) {
+      if (rBody.error !== 'ok') {
+        throw new Error(`MELView rejected command for unit ${command.getUnitID()}: ${rBody.error || 'unknown error'}.`);
+      }
+      if (rBody.lc && rBody.lc.length > 0) {
         this.dispatchLocalCommand(command, rBody.lc);
       }
       return rBody;
@@ -277,7 +284,13 @@ export class MelviewService {
         body: command.getLocalCommandBody(key),
         timeoutMs: LOCAL_TIMEOUT_MS,
       })
-        .then(r => r.text())
+        .then(async r => {
+          const body = await r.text();
+          if (!r.ok) {
+            throw new Error(`the unit returned HTTP ${r.status} ${r.statusText}${body ? `: ${excerpt(body)}` : ''}`);
+          }
+          return body;
+        })
         .then(v => this.log.debug('Successfully processed local request:', v))
         .catch(e => this.log.warn('Unable to access unit via direct LAN interface:', describeRequestFailure(e)));
     }

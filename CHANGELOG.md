@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Commands for each unit are now sent in order, so closely grouped Matter writes
+  cannot race each other.
+- A failed or MELView-rejected command no longer mutates the cached accessory
+  state as though the unit accepted it.
+- Direct LAN follow-up requests now report non-success HTTP responses as
+  failures instead of logging them as successful.
+- A malformed login response no longer leaves behind an auth cookie that makes
+  the next discovery attempt skip login.
+- Setup and modernization docs now consistently state the Homebridge 2.3+
+  requirement and document the shipped energy option.
+
 ## [1.4.1] - 2026-09-15
 
 ### Fixed
