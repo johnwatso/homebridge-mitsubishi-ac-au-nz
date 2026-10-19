@@ -107,6 +107,14 @@ export class MelviewMatterAccessory {
                 this.platform.log.info('ENERGY Capability:', device.room, '[REPORTING TO HOME]');
             }
         }
+        // Say up front where the LAN fast path will aim, and with what. When a
+        // unit turns out to refuse local commands, this is the address to
+        // probe and the adaptor family to look up - without needing debug logs.
+        const localip = device.capabilities?.localip;
+        this.platform.log.info('LAN fast path:', device.room,
+            localip
+                ? `[ ${device.capabilities?.adaptortype ?? 'unknown adaptor'} at ${localip} ]`
+                : '[ no local address reported - MELView delivery only ]');
     }
 
     private get matter() {

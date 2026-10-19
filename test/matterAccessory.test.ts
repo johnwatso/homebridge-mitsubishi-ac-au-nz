@@ -45,15 +45,15 @@ function device(): Unit {
     };
 }
 
-function platform(command: (first: Command, ...rest: Command[]) => Promise<CommandResponse>):
-    MelviewMitsubishiHomebridgePlatform {
+function platform(command: (first: Command, ...rest: Command[]) => Promise<CommandResponse>,
+    log: Logger = silentLog): MelviewMitsubishiHomebridgePlatform {
     const matter = {
         uuid: {generate: (value: string) => value},
         deviceTypes: {RoomAirConditioner: {}, TemperatureSensor: {}},
         updateAccessoryState: async () => undefined,
     };
     return {
-        log: silentLog,
+        log,
         config: {} as PlatformConfig,
         api: {matter} as unknown as API,
         melviewService: {command},
@@ -199,4 +199,25 @@ test('a heating setpoint written while the unit is cooling respects the cooling 
     await controller.buildAccessories()[0].handlers!.thermostat!.occupiedHeatingSetpointChange!(
         {occupiedHeatingSetpoint: 1000});
     assert.deepEqual(calls, ['TS18']);
+});
+
+test('startup names where the LAN fast path will aim', () => {
+    const infos: string[] = [];
+    const log = {...silentLog, info: (...args: unknown[]) => infos.push(args.join(' '))} as unknown as Logger;
+    const noCommand = async () => ({} as CommandResponse);
+
+    const reachable = device();
+    reachable.capabilities!.localip = '10.11.3.251';
+    new MelviewMatterAccessory(platform(noCommand, log), reachable);
+
+    // This address is what a refusing unit has to be probed at, so it should
+    // not take debug logging to find it.
+    assert.ok(infos.some(i => i.includes('10.11.3.251') && i.includes('MAC-568IF-E')),
+        `fast path not logged: ${JSON.stringify(infos)}`);
+
+    infos.length = 0;
+    new MelviewMatterAccessory(platform(noCommand, log), device());
+
+    assert.ok(infos.some(i => i.includes('no local address reported')),
+        `missing address not reported: ${JSON.stringify(infos)}`);
 });

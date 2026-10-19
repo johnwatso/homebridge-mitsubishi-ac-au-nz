@@ -6,6 +6,10 @@ All notable changes to this project are documented here. This project follows
 ## [Unreleased]
 
 ### Added
+- **Startup names where the LAN fast path will aim**, as one info line per
+  unit giving the adaptor type and local address, or saying that MELView
+  reported no local address. That address is what a unit refusing local
+  commands has to be probed at, and finding it should not require debug logs.
 - **Accepted commands are logged.** A successful change produced nothing in the
   log above debug level, so there was no sign it had gone through. Each
   accepted command now logs one info line naming the delivery route - applied
