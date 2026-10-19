@@ -3,7 +3,7 @@
 The local build is ready for a controlled first run. Automated checks cover the
 plugin logic; pairing, physical operation, and Apple Home presentation still
 need verification with your Homebridge host and Mitsubishi unit. These changes
-are local and unreleased; installing the existing npm release does not include
+are unreleased; installing the current npm release (1.4.0) does not include
 them.
 
 ## What was fixed
@@ -39,9 +39,11 @@ them.
    Control app. See [setup](setup.md) for Matter configuration and pairing.
 2. Build and package this checkout with `npm ci`, `npm run build`, then
    `npm pack`. Install the resulting `.tgz` on the **Homebridge host**, for
-   example `npm install -g /path/to/homebridge-mitsubishi-ac-au-nz-1.4.1.tgz`
+   example `npm install -g /path/to/homebridge-mitsubishi-ac-au-nz-1.5.0.tgz`
    in its terminal. Use the host's normal plugin installation permissions.
-   This package retains version 1.4.1; it is a local test build, not a new release.
+   This is version 1.5.0, prepared but deliberately not published: npm's
+   `latest` is still 1.4.0, and 1.4.1 was tagged but never reached the
+   registry. Nothing is released until these checks pass on your own unit.
 3. Start with the following platform entry. A 30-second poll catches remote
    changes with fewer cloud requests; commands still update immediately.
 
