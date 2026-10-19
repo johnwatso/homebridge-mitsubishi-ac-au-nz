@@ -4,6 +4,16 @@ on:
   release:
     types: [created]
 
+# Trusted publishing over OIDC: npm authenticates this workflow directly, so
+# there is no NPM_TOKEN to store, rotate or leak. "id-token" lets Actions mint
+# the OIDC token, which also earns an automatic provenance attestation for a
+# public package. This requires a trusted publisher registered on npmjs.com
+# against this repository and the "release.yml" filename - without it, the
+# publish step is rejected.
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -13,14 +23,17 @@ jobs:
       # Setup .npmrc file to publish to npm
       - uses: actions/setup-node@v5
         with:
-          # Must satisfy the "engines.node" range in package.json - "npm publish"
-          # runs prepublishOnly (lint, test, build), which needs a supported Node.
-          node-version: 22.x
+          # 24.x rather than 22.x: trusted publishing needs npm >= 11.5.1, and
+          # the latest Node 22 still bundles npm 10.9. Node 22 remains supported
+          # for consumers - "engines.node" allows it and build.yml tests it -
+          # this pin only governs the machine that publishes.
+          node-version: 24.x
           cache: npm
           registry-url: 'https://registry.npmjs.org'
 
       - run: npm ci
 
-      - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # A GitHub prerelease publishes under "beta" so it cannot become the
+      # version existing installs are offered; a full release takes "latest".
+      # "npm publish" runs prepublishOnly (lint, test, build) first.
+      - run: npm publish --tag ${{ github.event.release.prerelease && 'beta' || 'latest' }}

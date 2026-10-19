@@ -124,6 +124,22 @@ For best results, the Homebridge host should be able to reach each Wi-Fi module'
 - **A unit disappeared** — the plugin only removes accessories MELView genuinely stops reporting; a one-off empty/erroring response is ignored. If a unit was removed in MELView, it is removed here too.
 - **More detail** — enable Homebridge debug logging (`-D`) to see per-command and per-poll diagnostics.
 
+## Releasing
+
+Publishing runs from [release.yml](../.github/workflows/release.yml) when a
+GitHub Release is created, using npm trusted publishing over OIDC — there is no
+`NPM_TOKEN` to store. It needs two things set up once:
+
+1. A trusted publisher registered on npmjs.com for this package, naming this
+   repository and the workflow file `release.yml`.
+2. GitHub Actions enabled for this repository. It is a fork, so workflows stay
+   dormant until enabled by hand from the **Actions** tab; until then pushes and
+   releases trigger nothing.
+
+A GitHub **prerelease** publishes under the `beta` dist-tag, so existing installs
+are not offered it; a full release takes `latest`. Install a beta explicitly with
+`npm install -g homebridge-mitsubishi-ac-au-nz@beta`.
+
 ## Local development
 
 For the pre-use review, installation of the locally fixed build, and checks to
