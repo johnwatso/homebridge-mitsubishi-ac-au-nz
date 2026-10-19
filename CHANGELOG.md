@@ -30,6 +30,12 @@ All notable changes to this project are documented here. This project follows
 - Discovery cannot schedule new retry/poll timers after shutdown.
 - Updated the locked development dependency `brace-expansion` to 5.0.12 and
   synchronised the lockfile's Homebridge engine requirement.
+
+### Changed
+- Replaced the `nodemon` development dependency with `tsc --watch` and Node's
+  built-in `--watch-path`, removing the last dependency chain flagged by
+  `npm audit`. `npm run watch` behaves as before: it builds, links, then
+  recompiles and restarts Homebridge (`-I -D`) on every source edit.
 - Commands for each unit are now sent in order, so closely grouped Matter writes
   cannot race each other.
 - A failed or MELView-rejected command no longer mutates the cached accessory

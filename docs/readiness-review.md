@@ -27,7 +27,10 @@ them.
   temperatures, or capabilities missing an optional field).
 - Prevented discovery from scheduling retries after shutdown.
 - Updated the vulnerable `brace-expansion` development dependency in the
-  lockfile. The production dependency audit reports no known vulnerabilities.
+  lockfile, and replaced `nodemon` with `tsc --watch` plus Node's built-in
+  `--watch-path`, which removes the `nodemon → chokidar → braces` chain that
+  carried the three remaining high-severity findings. Both the full and the
+  production-only dependency audits now report no known vulnerabilities.
 
 ## First use
 
@@ -71,11 +74,6 @@ them.
   Energy is estimated/hourly, not a live wattage reading. Its ledger only
   fetches yesterday and today, so longer outages leave gaps. Date selection
   uses the Homebridge host timezone; use the unit's timezone on that host.
-- The full dependency audit still flags the development-only
-  `nodemon → chokidar → braces` chain (three high-severity package findings).
-  It is absent from production installs. The suggested audit fix downgrades
-  nodemon across major versions; it was not applied. Replacing the development
-  watcher can be handled separately.
 - No live MELView account, physical unit, or paired Apple Home controller was
   used for this review. Unit tests use stubbed network/Matter interfaces.
 
@@ -86,5 +84,6 @@ fixes; each of the four newest was confirmed to fail against the unfixed code.
 A fresh `npm ci --ignore-scripts` in a temporary checkout also passes all 72
 tests, ESLint, and TypeScript compilation. ESLint now covers `test/` as well as
 `src/` and reports no warnings. `npm audit --omit=dev` reports zero
-vulnerabilities. The declared Node 22 target remains covered by the
+vulnerabilities, as does `npm audit` with development dependencies
+included. The declared Node 22 target remains covered by the
 repository's CI matrix, but was not run locally during this review.

@@ -136,6 +136,7 @@ npm run lint     # eslint (zero warnings)
 npm test         # unit tests (node:test)
 npm audit        # dependency audit
 npm link         # symlink for local Homebridge testing
+npm run watch    # build, link, then recompile and restart Homebridge on edits
 ```
 
-After `npm link`, Homebridge loads the plugin from your working tree. Homebridge runs the compiled `dist/`, so re-run `npm run build` after source edits and restart Homebridge. Tests cover the pure mapping logic (fan-stage mapping, MELView↔Matter mapping, setpoint clamping, command-response merging) and the MELView client (session handling, retries, error reporting) against a stubbed `fetch`; please keep `build`, `lint`, and `test` green.
+After `npm link`, Homebridge loads the plugin from your working tree. Homebridge runs the compiled `dist/`, so re-run `npm run build` after source edits and restart Homebridge. `npm run watch` does both for you: it keeps `tsc --watch` running and uses Node's own `--watch-path=./dist` to restart Homebridge (`-I -D`) whenever a rebuild lands. Press Ctrl-C once to stop both. Tests cover the pure mapping logic (fan-stage mapping, MELView↔Matter mapping, setpoint clamping, command-response merging) and the MELView client (session handling, retries, error reporting) against a stubbed `fetch`; please keep `build`, `lint`, and `test` green.
