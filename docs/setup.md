@@ -38,6 +38,13 @@ This isn't fully offline local control — MELView is still used for login, disc
 
 The plugin exposes each unit as a Matter `RoomAirConditioner` (OnOff + Thermostat + FanControl), plus an optional `TemperatureSensor` for outdoor temperature.
 
+New accessories use your room/unit name from MELView. If the available names
+are blank, the unit ID, or a MAC address, the default is **Heat Pump**.
+The outdoor sensor adds
+**Outdoor** to that name. Set distinct room names in the Mitsubishi app if you
+have multiple units. Already-paired tiles may retain their existing names in
+Home; you can rename those in Home's accessory settings.
+
 ## Installation
 **Config UI (recommended)**
 1. Install [Homebridge](https://homebridge.io/) `2.3+`.
@@ -80,7 +87,7 @@ Add the platform to your Homebridge `config.json`:
 | `user` | Yes | — | Mitsubishi Wi-Fi Control / MELView account email. |
 | `password` | Yes | — | Mitsubishi Wi-Fi Control / MELView account password. |
 | `dry` | No | `false` | Map supported units' dry mode to Matter `SystemMode.Dry` (best-effort; see [Known limitations](#known-limitations)). |
-| `outdoorTemperature` | No | `false` | Expose MELView outdoor temperature as a separate Matter temperature sensor when available. |
+| `outdoorTemperature` | No | `false` | Expose a separate Matter outdoor temperature sensor. Missing readings show as unknown; the tile persists across restarts. Leave disabled for units without an outdoor reading. |
 | `pollInterval` | No | `10` | Seconds between MELView state refreshes (range `5`–`120`). Commands update instantly, so this only catches changes made outside Apple Home (e.g. the wall remote). Higher is gentler on the MELView API. |
 | `energy` | No | `true` | Publish cumulative Matter energy usage for units that report MELView Energy Monitoring. Requires Homebridge 2.3+; see [energy-reporting.md](energy-reporting.md). |
 
@@ -98,6 +105,7 @@ Earlier versions of this plugin published over HAP. On the first launch after up
 - **Swing / vane direction is not exposed** — Homebridge's Matter FanControl wrapper has no swing (`rockSetting`) control handler, so swing was dropped in the Matter migration.
 - **Dry mode is best-effort** — maps to Matter `SystemMode.Dry`; how Apple Home renders it is not guaranteed across iOS versions.
 - **No Auto mode or Auto fan in Home.** Homebridge's Matter air conditioner has no Auto features, and Matter refuses the accessory if they're used. A unit running in auto shows as heating or cooling. Auto fan is shown as 0%, and setting the slider to 0% selects it.
+- **Units without auto fan** use the lowest supported speed when the slider is set to 0%; use the AC power control to turn the unit off.
 - **Energy is cumulative only, hourly, and estimated** — MELView has no live power reading, usage lags by up to an hour, and bridged accessories may only count toward the whole-home total in Apple Home. Disable with `"energy": false`. See [energy-reporting.md](energy-reporting.md).
 - **Internet required** — MELView authentication is needed for normal operation; this is not offline-only control.
 
@@ -117,6 +125,10 @@ For best results, the Homebridge host should be able to reach each Wi-Fi module'
 - **More detail** — enable Homebridge debug logging (`-D`) to see per-command and per-poll diagnostics.
 
 ## Local development
+
+For the pre-use review, installation of the locally fixed build, and checks to
+perform with your own unit, see [Readiness review](readiness-review.md).
+
 ```bash
 npm install      # install dependencies
 npm run build    # compile TypeScript to dist/

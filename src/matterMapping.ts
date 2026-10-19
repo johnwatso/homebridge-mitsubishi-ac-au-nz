@@ -158,9 +158,9 @@ export function occupiedSetpoints(settemp: string | number | undefined, limits: 
         return undefined;
     }
     const cool = clampToRange(value, limits.cool);
-    // Auto mode additionally rejects a heating setpoint above the cooling one,
-    // which differing per-mode limits can produce at the top of the range.
-    const heat = Math.max(Math.min(clampToRange(value, limits.heat), cool), limits.heat.min);
+    // This thermostat has no AutoMode feature or shared setpoint deadband.
+    // Cooling limits must not lower a valid heating setpoint (or vice versa).
+    const heat = clampToRange(value, limits.heat);
     return {
         occupiedCoolingSetpoint: Math.round(cool * 100),
         occupiedHeatingSetpoint: Math.round(heat * 100),

@@ -91,6 +91,14 @@ test('a session cookie with no stated expiry is not pre-emptively refreshed', ()
     assert.equal(cookieExpiresWithin(sessionCookie, AUTH_REFRESH_MARGIN_MS), false);
 });
 
+test('Max-Age expires relative to cookie creation, including immediate expiry', () => {
+    const cookie = Cookie.parse('auth=TOKEN; Max-Age=600')!;
+    const created = cookie.creation!.getTime();
+    assert.equal(cookieExpiresWithin(cookie, AUTH_REFRESH_MARGIN_MS, created), false);
+    assert.equal(cookieExpiresWithin(cookie, AUTH_REFRESH_MARGIN_MS, created + 360_000), true);
+    assert.equal(cookieExpiresWithin(Cookie.parse('auth=TOKEN; Max-Age=0')!, 0), true);
+});
+
 test('login surfaces the HTTP status instead of a generic network error', async () => {
     stubFetch([new Response('nope', {status: 503, statusText: 'Service Unavailable'})]);
     await assert.rejects(service().login(), /HTTP 503/);
@@ -109,7 +117,7 @@ test('a malformed login response does not retain its auth cookie', async () => {
     const {calls} = stubFetch([
         malformedLogin,
         loginResponse(),
-        new Response(JSON.stringify({id: 'u1', power: 1}), {status: 200}),
+        new Response(JSON.stringify({id: 'u1', power: 1, setmode: 3, setfan: 1, settemp: '21', roomtemp: '20'}), {status: 200}),
     ]);
     const s = service();
 
@@ -123,7 +131,7 @@ test('an expired session (HTML login page under a 200) triggers one re-login and
         loginResponse(),
         new Response('<html><body>Please log in</body></html>', {status: 200}),
         loginResponse(),
-        new Response(JSON.stringify({id: 'u1', power: 1}), {status: 200}),
+        new Response(JSON.stringify({id: 'u1', power: 1, setmode: 3, setfan: 1, settemp: '21', roomtemp: '20'}), {status: 200}),
     ]);
 
     const state = await service().getStatus('u1');
@@ -158,8 +166,8 @@ test('requests carry the auth cookie once logged in', async () => {
 test('concurrent callers share a single login', async () => {
     const {calls} = stubFetch([
         loginResponse(),
-        new Response(JSON.stringify({id: 'u1', power: 1}), {status: 200}),
-        new Response(JSON.stringify({id: 'u2', power: 0}), {status: 200}),
+        new Response(JSON.stringify({id: 'u1', power: 1, setmode: 3, setfan: 1, settemp: '21', roomtemp: '20'}), {status: 200}),
+        new Response(JSON.stringify({id: 'u2', power: 0, setmode: 3, setfan: 1, settemp: '21', roomtemp: '20'}), {status: 200}),
     ]);
 
     const s = service();
@@ -175,4 +183,75 @@ test('a rejected command is surfaced instead of being treated as accepted', asyn
     ]);
 
     await assert.rejects(service().command(command()), /rejected command.*unit offline/);
+});
+
+test('malformed JSON status cannot replace a healthy cached state', async () => {
+    for (const body of [null, {}, {error: 'unit offline'}, {power: 1, setmode: 3},
+        {power: 1, setmode: 3, setfan: 1, settemp: '', roomtemp: '20'}]) {
+        stubFetch([loginResponse(), new Response(JSON.stringify(body))]);
+        await assert.rejects(service().getStatus('u1'), /invalid status/);
+    }
+});
+
+test('malformed discovery and capability responses fail before accessory setup', async () => {
+    for (const body of [null, {}, [{building: 'Home'}], [{units: [{room: 'Study'}]}]]) {
+        stubFetch([loginResponse(), new Response(JSON.stringify(body))]);
+        await assert.rejects(service().discover(), /invalid unit inventory/);
+    }
+    stubFetch([loginResponse(), new Response(JSON.stringify({error: 'offline'}))]);
+    await assert.rejects(service().capabilities('u1'), /invalid capabilities/);
+});
+
+test('a JSON null login response does not retain a cookie', async () => {
+    const badLogin = new Response('null', {headers: {'set-cookie': 'auth=BAD; Path=/'}});
+    const {calls} = stubFetch([badLogin, loginResponse(), new Response('[]')]);
+    const s = service();
+    await assert.rejects(s.discover(), /Failed to parse/);
+    assert.deepEqual(await s.discover(), []);
+    assert.equal(calls.filter(call => call.url.endsWith('login.aspx')).length, 2);
+});
+
+test('late rejection of an old cookie reuses the new session', async () => {
+    let rejectOldRequest!: (response: Response) => void;
+    let logins = 0;
+    let requests = 0;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+        if (String(url).endsWith('login.aspx')) {
+            logins++;
+            return loginResponse();
+        }
+        requests++;
+        if (requests === 1) {
+return new Response('expired', {status: 401});
+}
+        if (requests === 2) {
+return new Promise<Response>(resolve => {
+    rejectOldRequest = resolve;
+});
+}
+        return new Response('[]');
+    }) as typeof fetch;
+    const s = service();
+    await s.login();
+    const first = s.discover();
+    const second = s.discover();
+    await first;
+    rejectOldRequest(new Response('expired', {status: 401}));
+    await second;
+    assert.equal(logins, 2);
+});
+
+test('temperatures reported as numbers rather than strings are accepted', async () => {
+    stubFetch([loginResponse(),
+        new Response(JSON.stringify({id: 'u1', power: 1, setmode: 3, setfan: 1, settemp: 21, roomtemp: 20.5}))]);
+    const state = await service().getStatus('u1');
+    assert.equal(Number(state.settemp), 21);
+    assert.equal(Number(state.roomtemp), 20.5);
+});
+
+test('capabilities missing an optional field are kept; an error envelope is not', async () => {
+    stubFetch([loginResponse(), new Response(JSON.stringify({id: 'u1', unitname: 'Study', halfdeg: 1}))]);
+    assert.equal((await service().capabilities('u1')).fanstage, undefined);
+    stubFetch([loginResponse(), new Response(JSON.stringify({error: 'offline'}))]);
+    await assert.rejects(service().capabilities('u1'), /invalid capabilities/);
 });

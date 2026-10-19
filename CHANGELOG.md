@@ -6,6 +6,30 @@ All notable changes to this project are documented here. This project follows
 ## [Unreleased]
 
 ### Fixed
+- New accessories use a readable MELView room/unit name, falling back to
+  "Heat Pump" when Mitsubishi supplies a MAC address or unit ID as the default name.
+  Outdoor sensors use the same name with "Outdoor" appended.
+- Fan codes for one-, three-, and four-stage units now match Mitsubishi's
+  Wi-Fi Control app. Rounded Matter percentages round-trip without jumping
+  speeds, and units without auto fan use their lowest speed for 0%.
+- Slow status polls no longer overwrite newer accepted commands; polling
+  pauses while commands are queued.
+- Temperature writes are clamped to the limits of the mode the unit will
+  actually run in, resolved after any queued mode change rather than from the
+  setpoint Home happened to write. Capability-supplied limits and whole/
+  half-degree support are honoured, and a heating target above the cooling
+  maximum is no longer displayed too low.
+- An enabled outdoor sensor keeps its identity when a startup reading is
+  missing, reporting an unknown temperature until readings resume.
+- Max-Age cookies expire relative to creation; late failures from old sessions
+  no longer discard a newer login. Invalid JSON response shapes are rejected
+  before replacing state or processing the accessory inventory, while
+  temperatures reported as numbers and capabilities with optional fields
+  missing are still accepted. A capabilities payload without a fan stage count
+  falls back to the one in the status response instead of assuming five.
+- Discovery cannot schedule new retry/poll timers after shutdown.
+- Updated the locked development dependency `brace-expansion` to 5.0.12 and
+  synchronised the lockfile's Homebridge engine requirement.
 - Commands for each unit are now sent in order, so closely grouped Matter writes
   cannot race each other.
 - A failed or MELView-rejected command no longer mutates the cached accessory

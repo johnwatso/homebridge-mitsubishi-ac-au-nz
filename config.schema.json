@@ -28,7 +28,7 @@
         "title": "Expose Outdoor Temperature",
         "type": "boolean",
         "default": false,
-        "description": "Expose the MELView outdoor temperature reading as a separate Matter temperature sensor when available."
+        "description": "Expose a separate Matter outdoor temperature sensor. The tile persists when readings are missing and shows an unknown temperature until they resume. Enable only for units with outdoor readings."
       },
       "pollInterval": {
         "title": "Poll Interval (seconds)",

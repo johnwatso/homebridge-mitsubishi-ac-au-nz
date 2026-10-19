@@ -59,12 +59,10 @@ test('without auto fan the slider floor is the lowest real speed', () => {
 
 test('3-stage unit exposes three detents and round-trips each code', () => {
     const c = caps({fanstage: 3, hasautofan: 0});
-    // Uniform steps over 0-100 can't land exactly on 100 for non-divisors of
-    // 100, so the top detent is ~99.9. This is cosmetic and only affects odd
-    // (non-5) stage counts; the proven 5-stage path stays exact.
     assert.equal(fanRotationStep(c), 33.3);
     assert.equal(rotationSpeedToFanCode(100, c), 5);
-    for (const code of [1, 3, 5]) {
+    assert.equal(fanCodeToRotationSpeed(5, c), 100);
+    for (const code of [2, 3, 5]) {
         const speed = fanCodeToRotationSpeed(code, c) as number;
         assert.equal(rotationSpeedToFanCode(speed, c), code, `code ${code}`);
     }

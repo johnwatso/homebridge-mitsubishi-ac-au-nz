@@ -4,15 +4,14 @@ import {Capabilities} from './data';
  * Single source of truth for translating between HomeKit's RotationSpeed slider
  * (0-100) and MELView's discrete fan codes.
  *
- * MELView fan codes are hardware-specific. Mitsubishi 5-stage units historically
- * skip code 4, yielding the ladder [1, 2, 3, 5, 6]. The ladders for other stage
- * counts are best-effort and may need confirmation against specific hardware.
+ * MELView fan codes are hardware-specific. These ladders match fanStageInfo in
+ * Mitsubishi's Wi-Fi Control app: https://app.melview.net/js/ex.js.
  */
 const FAN_CODE_LADDERS: Record<number, number[]> = {
-    1: [3],
+    1: [5],
     2: [2, 5],
-    3: [1, 3, 5],
-    4: [1, 2, 3, 5],
+    3: [2, 3, 5],
+    4: [2, 3, 5, 6],
     5: [1, 2, 3, 5, 6],
 };
 
@@ -41,13 +40,14 @@ export function fanMinRotation(capabilities?: Capabilities): number {
 
 /** HomeKit RotationSpeed (0-100) -> MELView fan code (0 = auto/off). */
 export function rotationSpeedToFanCode(speed: number, capabilities?: Capabilities): number {
-    if (speed <= 0) {
-        return 0;
-    }
     const codes = fanCodes(capabilities);
-    const step = 100 / codes.length;
-    const index = Math.min(codes.length - 1, Math.max(0, Math.ceil(speed / step) - 1));
-    return codes[index];
+    if (speed <= 0) {
+        return hasAutoFan(capabilities) ? 0 : codes[0];
+    }
+    // Matter sends integer percentages: a three-stage medium speed is 67%,
+    // which must not round up a second time to the highest fan code.
+    const index = codes.findIndex((_, i) => Math.round(speed) <= Math.round((i + 1) * 100 / codes.length));
+    return codes[index < 0 ? codes.length - 1 : index];
 }
 
 /** MELView fan code -> HomeKit RotationSpeed (0-100). */
@@ -56,11 +56,11 @@ export function fanCodeToRotationSpeed(code: number | undefined, capabilities?: 
         return 0;
     }
     const codes = fanCodes(capabilities);
-    const step = fanRotationStep(capabilities);
+    const step = 100 / codes.length;
     const index = codes.indexOf(code);
     if (index < 0) {
         // Unknown code: fall back to the lowest real speed.
-        return step;
+        return fanRotationStep(capabilities);
     }
     return Math.round((index + 1) * step * 10) / 10;
 }

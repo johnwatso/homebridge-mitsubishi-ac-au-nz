@@ -101,12 +101,10 @@ test('the single MELView setpoint is clamped into each mode range', () => {
         {occupiedCoolingSetpoint: 3100, occupiedHeatingSetpoint: 3100});
 });
 
-test('the heating setpoint never lands above the cooling one', () => {
-    // Auto mode rejects an inverted pair; differing maxima could otherwise produce it.
+test('heating above the cooling maximum remains visible on this non-auto thermostat', () => {
     const limits = {cool: {min: 16, max: 28}, heat: {min: 10, max: 31}};
     const setpoints = occupiedSetpoints('31', limits)!;
-    assert.ok(setpoints.occupiedCoolingSetpoint >= setpoints.occupiedHeatingSetpoint);
-    assert.deepEqual(setpoints, {occupiedCoolingSetpoint: 2800, occupiedHeatingSetpoint: 2800});
+    assert.deepEqual(setpoints, {occupiedCoolingSetpoint: 2800, occupiedHeatingSetpoint: 3100});
 });
 
 test('an unusable setpoint is omitted rather than sent as NaN', () => {
@@ -169,4 +167,20 @@ test('fan percent round-trips through code mapping (5-stage)', () => {
     assert.equal(fanCodeToPercent(5, c), 80);
     assert.equal(percentToFanCode(80, c), 5);
     assert.equal(percentToFanCode(100, c), 6);
+});
+
+test('all Mitsubishi fan ladders round-trip through integer Matter percentages', () => {
+    const ladders = [[5], [2, 5], [2, 3, 5], [2, 3, 5, 6], [1, 2, 3, 5, 6]];
+    ladders.forEach((codes, index) => {
+        const c = caps({fanstage: index + 1, hasautofan: 0});
+        codes.forEach((code, stage) => {
+            const percent = Math.round((stage + 1) * 100 / codes.length);
+            assert.equal(fanCodeToPercent(code, c), percent);
+            assert.equal(percentToFanCode(percent, c), code);
+        });
+    });
+});
+
+test('zero percent selects the lowest speed when auto fan is unsupported', () => {
+    assert.equal(percentToFanCode(0, caps({fanstage: 3, hasautofan: 0})), 2);
 });

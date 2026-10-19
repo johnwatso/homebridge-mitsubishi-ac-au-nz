@@ -39,6 +39,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
     private readonly controllers = new Map<string, MelviewMatterAccessory>();
     private readonly pollingIntervals = new Set<NodeJS.Timeout>();
     private discoveryAttempt = 0;
+    private shuttingDown = false;
 
     constructor(
         public readonly log: Logger,
@@ -65,6 +66,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
       });
 
       this.api.on('shutdown', () => {
+        this.shuttingDown = true;
         for (const interval of this.pollingIntervals) {
           clearInterval(interval);
         }
@@ -87,10 +89,17 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
     }
 
     registerPollingInterval(interval: NodeJS.Timeout) {
+      if (this.shuttingDown) {
+        clearInterval(interval);
+        return;
+      }
       this.pollingIntervals.add(interval);
     }
 
     async discoverDevices(): Promise<void> {
+      if (this.shuttingDown) {
+        return;
+      }
       if (!this.api.isMatterEnabled()) {
         this.log.error(
           'Matter is not enabled for this bridge. This plugin publishes Matter accessories, so it requires a',
@@ -107,7 +116,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
         this.log.debug(String(e));
       }
 
-      if (complete) {
+      if (complete || this.shuttingDown) {
         this.discoveryAttempt = 0;
         return;
       }
@@ -132,7 +141,7 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
 
       // discover() authenticates on demand; no need to login separately here.
       const buildings = await this.melviewService!.discover();
-      if (!buildings) {
+      if (!buildings || this.shuttingDown) {
         return false;
       }
 
@@ -153,6 +162,14 @@ export class MelviewMitsubishiHomebridgePlatform implements DynamicPlatformPlugi
           try {
             device.capabilities = await this.melviewService!.capabilities(device.unitid);
             device.state = await this.melviewService!.getStatus(device.unitid);
+            // The fan ladder depends on the stage count; status carries it when
+            // capabilities omit it, which beats defaulting to a five-stage unit.
+            if (!Number.isFinite(device.capabilities.fanstage) && Number.isFinite(device.state.fanstage)) {
+              device.capabilities.fanstage = device.state.fanstage;
+            }
+            if (this.shuttingDown) {
+              return false;
+            }
 
             const controller = new MelviewMatterAccessory(this, device);
             controller.uuids().forEach(uuid => listedUUIDs.add(uuid));

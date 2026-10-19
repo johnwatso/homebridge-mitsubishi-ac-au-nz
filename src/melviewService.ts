@@ -56,11 +56,13 @@ export function cookieExpiresWithin(cookie: Cookie | undefined, marginMs: number
   if (!cookie) {
     return true;
   }
-  const expiresAt = cookie.expiryTime(now);
+  // Max-Age is relative to creation, not the time we check the cookie. Passing
+  // a timestamp here also throws in tough-cookie 4, which expects a Date.
+  const expiresAt = cookie.expiryTime();
   if (expiresAt === undefined) {
     return true;
   }
-  if (!Number.isFinite(expiresAt)) {
+  if (expiresAt === Infinity) {
     // Session cookie: no expiry to anticipate, so rely on retry-after-rejection.
     return false;
   }
@@ -79,6 +81,21 @@ function describeRequestFailure(e: unknown): string {
 function excerpt(body: string): string {
   const collapsed = body.replace(/\s+/g, ' ').trim();
   return collapsed.length > 120 ? `${collapsed.slice(0, 120)}...` : collapsed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * MELView reports temperatures as strings, but the `State` consumers accept
+ * numbers too, so validation must not be the strictest link in the chain.
+ */
+function isNumeric(value: unknown): boolean {
+  if (typeof value === 'number') {
+    return Number.isFinite(value);
+  }
+  return typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value));
 }
 
 export class MelviewService {
@@ -122,6 +139,9 @@ export class MelviewService {
 
       try {
         const account = JSON.parse(body) as Account;
+        if (!isRecord(account) || !Number.isFinite(account.id)) {
+          throw new Error('Invalid account response');
+        }
         // Do not retain a cookie from a malformed login response. Keeping it
         // would make the next discovery skip login and fail less clearly.
         this.auth = auth;
@@ -153,7 +173,14 @@ export class MelviewService {
      * Queries the entire inventory of accessories listed in Melview for the account.
      */
     public async discover(): Promise<Building[] | undefined> {
-      return this.authedRequest<Building[]>(ROOMS_SERVICE);
+      const buildings = await this.authedRequest<Building[]>(ROOMS_SERVICE);
+      // Validate the whole inventory before registration or stale removal.
+      if (!Array.isArray(buildings) || !buildings.every(b => isRecord(b) && Array.isArray(b.units) &&
+        b.units.every(unit => isRecord(unit) && typeof unit.unitid === 'string' && unit.unitid.length > 0 &&
+          typeof unit.room === 'string'))) {
+        throw new Error('MELView returned an invalid unit inventory.');
+      }
+      return buildings;
     }
 
     /**
@@ -161,7 +188,15 @@ export class MelviewService {
      * @param unitID is the unit identifier
      */
     public async capabilities(unitID: string): Promise<Capabilities> {
-      return this.authedRequest<Capabilities>(CAPABILITIES_SERVICE, {unitid: unitID});
+      const capabilities = await this.authedRequest<Capabilities>(CAPABILITIES_SERVICE, {unitid: unitID});
+      // Reject MELView's error envelope, but not an otherwise valid payload
+      // with fields missing: a missing fanstage is recoverable from the status
+      // response, so it must not keep the unit out of Home entirely.
+      if (!isRecord(capabilities) ||
+        (capabilities.error !== undefined && capabilities.error !== 'ok')) {
+        throw new Error(`MELView returned invalid capabilities for unit ${unitID}.`);
+      }
+      return capabilities;
     }
 
     /**
@@ -194,7 +229,13 @@ export class MelviewService {
      * @param unitID is the unit identifier
      */
     public async getStatus(unitID: string): Promise<State> {
-      return this.authedRequest<State>(COMMAND_SERVICE, {unitid: unitID});
+      const state = await this.authedRequest<State>(COMMAND_SERVICE, {unitid: unitID});
+      if (!isRecord(state) || (state.power !== 0 && state.power !== 1) ||
+        !Number.isFinite(state.setmode) || !Number.isFinite(state.setfan) ||
+        !isNumeric(state.settemp) || !isNumeric(state.roomtemp)) {
+        throw new Error(`MELView returned invalid status for unit ${unitID}.`);
+      }
+      return state;
     }
 
     /**
@@ -231,6 +272,7 @@ export class MelviewService {
      */
     private async authedRequest<T>(service: string, payload?: Record<string, unknown>): Promise<T> {
       await this.ensureAuth();
+      const requestAuth = this.auth;
       try {
         return await this.postJson<T>(service, payload);
       } catch (e) {
@@ -238,7 +280,11 @@ export class MelviewService {
           throw e;
         }
         this.log.debug('MELView rejected the session for', service, '- re-authenticating and retrying once.');
-        this.auth = undefined;
+        // Another unit may already have replaced the rejected session while
+        // this request was in flight. Do not invalidate that fresh login.
+        if (this.auth === requestAuth) {
+          this.auth = undefined;
+        }
         await this.ensureAuth();
         return this.postJson<T>(service, payload);
       }

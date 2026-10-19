@@ -40,6 +40,19 @@ const OUTDOOR_PLAUSIBLE_MAX = 50;
 const DEFAULT_COOL_RANGE: Range = {min: 16, max: 31};
 const DEFAULT_HEAT_RANGE: Range = {min: 10, max: 31};
 
+/** Prefer the user's MELView name over the Wi-Fi module's default MAC label. */
+function accessoryName(device: Unit): string {
+    const candidates = [device.room, device.name, device.capabilities?.unitname, device.state?.unitname];
+    for (const candidate of candidates) {
+        const name = typeof candidate === 'string' ? candidate.trim() : '';
+        const compact = name.replace(/[:.\s-]/g, '');
+        if (name && name !== device.unitid && !/^[a-f\d]{12}$/i.test(compact)) {
+            return name;
+        }
+    }
+    return 'Heat Pump';
+}
+
 /**
  * Owns one Mitsubishi unit's Matter representation: it builds the Matter
  * accessory descriptors (RoomAirConditioner + optional outdoor TemperatureSensor),
@@ -49,6 +62,7 @@ const DEFAULT_HEAT_RANGE: Range = {min: 10, max: 31};
 export class MelviewMatterAccessory {
     public readonly acUuid: string;
     public readonly outdoorUuid?: string;
+    private readonly displayName: string;
     private readonly modeSupport: ModeSupport;
     private lastFaultKey?: string;
 
@@ -62,6 +76,8 @@ export class MelviewMatterAccessory {
     private pollFailing = false;
     /** Home may send related writes together; keep each unit's MELView commands ordered. */
     private commandQueue: Promise<void> = Promise.resolve();
+    private pendingCommands = 0;
+    private commandRevision = 0;
 
     private static readonly DEFAULT_POLL_SECONDS = 10;
     private static readonly MIN_POLL_SECONDS = 5;
@@ -73,6 +89,7 @@ export class MelviewMatterAccessory {
         private readonly platform: MelviewMitsubishiHomebridgePlatform,
         private readonly device: Unit,
     ) {
+        this.displayName = accessoryName(device);
         this.acUuid = this.matter.uuid.generate(device.unitid);
         this.modeSupport = modeSupportFor(device.capabilities, Boolean(platform.config.dry));
         if (this.exposesOutdoor()) {
@@ -118,7 +135,7 @@ export class MelviewMatterAccessory {
     private buildAcAccessory(): MatterAccessory {
         return {
             UUID: this.acUuid,
-            displayName: this.device.room,
+            displayName: this.displayName,
             deviceType: this.matter.deviceTypes.RoomAirConditioner,
             serialNumber: this.device.unitid,
             manufacturer: 'Mitsubishi Electric',
@@ -143,9 +160,9 @@ export class MelviewMatterAccessory {
                 thermostat: {
                     systemModeChange: (a: {systemMode: number}) => this.applySystemMode(a.systemMode),
                     occupiedCoolingSetpointChange: (a: {occupiedCoolingSetpoint: number}) =>
-                        this.applySetpoint(a.occupiedCoolingSetpoint),
+                        this.applySetpoint(a.occupiedCoolingSetpoint, WorkMode.COOL),
                     occupiedHeatingSetpointChange: (a: {occupiedHeatingSetpoint: number}) =>
-                        this.applySetpoint(a.occupiedHeatingSetpoint),
+                        this.applySetpoint(a.occupiedHeatingSetpoint, WorkMode.HEAT),
                 },
                 fanControl: {
                     percentSettingChange: (a: {percentSetting: number | null}) =>
@@ -159,7 +176,7 @@ export class MelviewMatterAccessory {
     private buildOutdoorAccessory(): MatterAccessory {
         return {
             UUID: this.outdoorUuid!,
-            displayName: `${this.device.room} Outdoor`,
+            displayName: `${this.displayName} Outdoor`,
             deviceType: this.matter.deviceTypes.TemperatureSensor,
             serialNumber: `${this.device.unitid}-outdoor`,
             manufacturer: 'Mitsubishi Electric',
@@ -174,7 +191,20 @@ export class MelviewMatterAccessory {
     // ---- Home -> device handlers --------------------------------------------
 
     private command(...commands: [Command, ...Command[]]): Promise<void> {
-        const task = this.commandQueue.then(() => this.executeCommand(commands));
+        return this.queueCommands(() => commands);
+    }
+
+    /**
+     * Queues work that builds its commands only once the commands ahead of it
+     * have been sent, so it can read the state they left behind.
+     */
+    private queueCommands(build: () => [Command, ...Command[]]): Promise<void> {
+        this.pendingCommands++;
+        this.commandRevision++;
+        const task = this.commandQueue.then(() => this.executeCommand(build()))
+            .finally(() => {
+                this.pendingCommands--;
+            });
         // Keep the queue usable after a rejected command while still returning
         // the rejection to the Matter handler that initiated it.
         this.commandQueue = task.catch(() => undefined);
@@ -212,11 +242,31 @@ export class MelviewMatterAccessory {
         return this.command(onCmd);
     }
 
-    private applySetpoint(centiDegrees: number): Promise<void> {
+    private applySetpoint(centiDegrees: number, written: WorkMode): Promise<void> {
+        if (!Number.isFinite(centiDegrees)) {
+            return Promise.reject(new Error('Temperature must be finite.'));
+        }
+        const requested = fromCentiDegrees(centiDegrees);
+        // Home may queue a mode change and a temperature change together, so
+        // the mode this setpoint lands in is only known once the commands ahead
+        // of it have been sent. Resolve the limits then, not now.
+        return this.queueCommands(() => [
+            new CommandTemperature(this.clampSetpoint(requested, written), this.device, this.platform),
+        ]);
+    }
+
+    /**
+     * MELView keeps a single setpoint across modes, so a write must respect the
+     * mode the unit will actually run in. The written attribute only chooses the
+     * limits when the unit reports neither heating nor cooling.
+     */
+    private clampSetpoint(requested: number, written: WorkMode): number {
         const limits = this.setpointLimits();
-        const range = this.state.setmode === WorkMode.HEAT ? limits.heat : limits.cool;
-        const target = clampToRange(fromCentiDegrees(centiDegrees), range);
-        return this.command(new CommandTemperature(target, this.device, this.platform));
+        const running = this.state.setmode;
+        const mode = running === WorkMode.HEAT || running === WorkMode.COOL ? running : written;
+        const step = this.device.capabilities?.halfdeg === 1 ? 0.5 : 1;
+        return clampToRange(Math.round(requested / step) * step,
+            mode === WorkMode.HEAT ? limits.heat : limits.cool);
     }
 
     private applyFanPercent(percent: number | null): Promise<void> {
@@ -229,12 +279,12 @@ export class MelviewMatterAccessory {
      * Off and Auto. Numeric speed modes are driven by percentSettingChange, so we
      * ignore them here to avoid sending a duplicate command.
      *
-     * Both Off and Auto map to fan code 0 - MELView has no "fan stopped while
-     * running" state, and reads code 0 as auto on units that support auto fan.
+     * MELView has no "fan stopped while running" state. Off and Auto select
+     * auto fan where supported, otherwise the lowest supported speed.
      */
     private applyFanMode(fanMode: number): Promise<void> | void {
         if (fanMode === FanMode.Off || fanMode === FanMode.Auto) {
-            return this.command(new CommandFanCode(0, this.device, this.platform));
+            return this.applyFanPercent(0);
         }
     }
 
@@ -327,12 +377,16 @@ export class MelviewMatterAccessory {
     }
 
     private range(mode: WorkMode, fallback: Range): Range {
-        return this.state.max?.[mode + ''] ?? fallback;
+        const range = this.state.max?.[mode + ''] ?? this.device.capabilities?.max?.[mode + ''];
+        const min = Number(range?.min);
+        const max = Number(range?.max);
+        return Number.isFinite(min) && Number.isFinite(max) && min <= max ? {min, max} : fallback;
     }
 
     private exposesOutdoor(): boolean {
-        return Boolean(this.platform.config.outdoorTemperature) &&
-            Number.isFinite(Number.parseFloat(this.device.state?.outdoortemp ?? ''));
+        // Availability of one reading must not change accessory identity on a
+        // restart (which would discard room assignments and automations).
+        return Boolean(this.platform.config.outdoorTemperature);
     }
 
     /** Outdoor reading in Matter centi-°C, or null when missing/implausible (placeholder guard). */
@@ -404,19 +458,24 @@ export class MelviewMatterAccessory {
     private pollOnce(): void {
         const service = this.platform.melviewService;
         // A slow MELView reply (up to the request timeout) must not stack polls.
-        if (!service || this.pollInFlight) {
+        if (!service || this.pollInFlight || this.pendingCommands > 0) {
             return;
         }
         this.pollInFlight = true;
+        const revision = this.commandRevision;
         service.getStatus(this.device.unitid)
-            .then(s => {
+            .then(async s => {
+                // A poll sent before a command may arrive after its response.
+                if (revision !== this.commandRevision) {
+                    return;
+                }
                 if (this.pollFailing) {
                     this.pollFailing = false;
                     this.platform.log.info('MELView is reachable again for', this.device.room);
                 }
                 this.device.state = s;
                 this.reportFault(s);
-                this.pushState().finally();
+                await this.pushState();
             })
             .catch(e => {
                 const message = e instanceof Error ? e.message : String(e);
