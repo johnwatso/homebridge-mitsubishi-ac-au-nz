@@ -34,6 +34,8 @@ This plugin is a modernized fork of [`aurc/melview-mitsubishi-au-nz`](https://gi
 ## Responsiveness & reliability
 Runtime behaviours this fork adds on top of the original:
 
+- **Commands actually arrive** — the original sends commands as API version `v: 2`, captured from a 2021 build of the Wi-Fi Control app. MELView still accepts that version and answers `error: "ok"`, then never passes the command to the unit. The original does not notice, because it also fires a direct LAN request carrying the token MELView returned, and on a flat network that request is what applies the command. Where the LAN request cannot land — units on a separate VLAN or subnet, or an adaptor that refuses the local endpoint — the original's only working delivery path is gone and commands vanish silently: the tile moves, the unit never responds, and the log shows one warning about the LAN interface. This fork sends `v: 5` (and the current login `appversion`) as the app does, so MELView delivers on the unit's own poll, and the LAN request is a genuine accelerator rather than the only thing holding control up.
+- **A failed LAN request is not ignored** — the original's local POST is fire-and-forget, with no `response.ok` check, no return value and no fallback; it POSTs to `http://undefined/smart` when no local IP is known. This fork checks the outcome, re-sends through MELView, reports refusals apart from unreachability, and stops asking an adaptor that has refused.
 - **Instant command feedback** — after every command the plugin applies the unit's authoritative returned state and refreshes immediately, instead of waiting for the next poll.
 - **Relaxed, staggered polling** — units poll on a configurable interval (`pollInterval`, default 10s) with a random offset so they don't all hit MELView on the same tick, avoiding self-inflicted rate-limiting.
 - **Resilient discovery** — each unit is set up independently, so one flaky unit can't abort discovery for the rest; a transient empty MELView listing will **not** wipe your existing accessories.
@@ -44,6 +46,7 @@ Runtime behaviours this fork adds on top of the original:
 ## Still shared with the original
 - MELView-assisted control with a direct-to-unit LAN fast path (see [Setup → How it works](setup.md#how-it-works)).
 - An internet connection is still required for MELView authentication — this is not offline-only control.
+- **There is no local read path.** State is only ever learned by polling MELView, and the LAN request carries a token only MELView can issue, so every command needs a successful cloud round-trip first. This is a cloud-authorised local delivery shortcut, not local control.
 
 ## Trade-offs of the Matter move
 - **Swing dropped** — Homebridge's Matter FanControl wrapper exposes no swing (`rockSetting`) handler, so swing isn't controllable until Homebridge adds it. The HAP version had a swing on/off toggle.
