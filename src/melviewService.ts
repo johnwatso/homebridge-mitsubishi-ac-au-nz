@@ -277,8 +277,11 @@ export class MelviewService {
       // Only ask for a token when the fast path can use one, as the app does.
       const tryFastPath = this.localFastPathUsable(command);
       const rBody = await this.postCommand(unitID, allComms, tryFastPath);
-      if (tryFastPath && rBody.lc && rBody.lc.length > 0 &&
-        !await this.dispatchLocalCommand(command, rBody.lc)) {
+      if (tryFastPath && rBody.lc && rBody.lc.length > 0) {
+        if (await this.dispatchLocalCommand(command, rBody.lc)) {
+          this.log.info('Unit', unitID, 'applied', allComms, 'over the LAN.');
+          return rBody;
+        }
         // Stop paying for a fast path this unit refuses. The re-send is cheap
         // insurance rather than a rescue: MELView delivers on the unit's own
         // poll whether or not a token was issued, and re-stating the same
@@ -287,9 +290,22 @@ export class MelviewService {
         this.log.warn('Could not reach unit', unitID,
           'over the LAN - leaving this command to MELView, which is slower.',
           `The local fast path pauses for ${Math.round(LOCAL_FASTPATH_COOLDOWN_MS / 60000)} minutes.`);
-        return this.postCommand(unitID, allComms, false);
+        const resent = await this.postCommand(unitID, allComms, false);
+        this.logCloudAccepted(unitID, allComms);
+        return resent;
       }
+      this.logCloudAccepted(unitID, allComms);
       return rBody;
+    }
+
+    /**
+     * An accepted command is worth an info line: without one there is no sign
+     * in the log that a change went through, and the route explains why a
+     * cloud-delivered change is not instant.
+     */
+    private logCloudAccepted(unitID: string, commands: string): void {
+      this.log.info('MELView accepted', commands, 'for unit', unitID,
+        '- the unit applies it on its next poll, which is not instant.');
     }
 
     /**
@@ -436,8 +452,16 @@ export class MelviewService {
         });
         const {body, truncated} = await readBodyBestEffort(response);
         if (!response.ok) {
-          throw new Error(`the unit returned HTTP ${response.status} ${response.statusText}` +
-            `${body ? `: ${excerpt(body)}` : ''}`);
+          // An HTTP rejection means something at that address answered and
+          // refused, which a unit you cannot route to would not do. Say so:
+          // on a segmented network it is usually a firewall in the path or a
+          // different device holding that IP, not the unit.
+          const hint = response.status === 401 || response.status === 403
+            ? ' (something at that address answered and refused - on a segmented network this is' +
+              ' usually a firewall in the path or another device on that IP, not the unit)'
+            : '';
+          throw new Error(`the unit at ${url} returned HTTP ${response.status} ${response.statusText}` +
+            `${body ? `: ${excerpt(body)}` : ''}${hint}`);
         }
         // The Wi-Fi adapter hangs up as soon as it has answered, often before
         // finishing the body it announced, which undici reports as 'terminated'.

@@ -13,16 +13,18 @@ function silentLog(): Logger {
 }
 
 /** A log that keeps what it was told, so tests can assert on the noise a user sees. */
-function recordingLog(): Logger & { warnings: string[]; debugs: string[] } {
+function recordingLog(): Logger & { warnings: string[]; debugs: string[]; infos: string[] } {
     const warnings: string[] = [];
     const debugs: string[] = [];
+    const infos: string[] = [];
     const noop = () => undefined;
     return {
-        info: noop, error: noop, log: noop, success: noop,
+        error: noop, log: noop, success: noop,
         warn: (...args: unknown[]) => warnings.push(args.join(' ')),
         debug: (...args: unknown[]) => debugs.push(args.join(' ')),
-        warnings, debugs,
-    } as unknown as Logger & { warnings: string[]; debugs: string[] };
+        info: (...args: unknown[]) => infos.push(args.join(' ')),
+        warnings, debugs, infos,
+    } as unknown as Logger & { warnings: string[]; debugs: string[]; infos: string[] };
 }
 
 function service(log: Logger = silentLog()): MelviewService {
@@ -413,4 +415,41 @@ test('login reports the current app version, not the 2021 build', async () => {
 
     const body = JSON.parse(String(calls[0].init?.body)) as Record<string, unknown>;
     assert.equal(body.appversion, '6.5.2258');
+});
+
+test('an accepted command is logged, naming the delivery route', async () => {
+    stubFetch([loginResponse(), acceptedCommandResponse()]);
+    const log = recordingLog();
+
+    await service(log).command(command());
+
+    // Without this there is no sign in the log that a change went through.
+    assert.ok(log.infos.some(i => i.includes('MELView accepted') && i.includes('PW1')),
+        `no accepted-command log: ${JSON.stringify(log.infos)}`);
+    assert.ok(log.infos.some(i => i.includes('next poll')), 'the slower route should be explained');
+});
+
+test('a command the unit takes over the LAN says so', async () => {
+    stubFetch([loginResponse(), acceptedCommandResponse(), truncatedBodyResponse()]);
+    const log = recordingLog();
+
+    await service(log).command(command('http://192.168.1.50/smart'));
+
+    assert.ok(log.infos.some(i => i.includes('applied') && i.includes('over the LAN')),
+        `no LAN route log: ${JSON.stringify(log.infos)}`);
+    assert.ok(!log.infos.some(i => i.includes('next poll')), 'the LAN route is not the slow route');
+});
+
+test('an HTTP rejection names the address and what it usually means', async () => {
+    stubFetch([loginResponse(), acceptedCommandResponse(),
+        new Response('', {status: 403, statusText: 'Forbidden'}), acceptedCommandResponse()]);
+    const log = recordingLog();
+
+    await service(log).command(command('http://192.168.9.21/smart'));
+
+    const warning = log.warnings.find(w => w.includes('403'));
+    assert.ok(warning, `no 403 warning: ${JSON.stringify(log.warnings)}`);
+    // The address is what a firewall rule has to be written against.
+    assert.match(warning, /192\.168\.9\.21/);
+    assert.match(warning, /firewall in the path or another device on that IP/);
 });

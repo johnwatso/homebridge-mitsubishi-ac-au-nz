@@ -39,7 +39,12 @@ Every call carries `v: 5`, the API version the Wi-Fi Control app sends. This is 
 
 The LAN request is only an accelerator — MELView delivers the command on the unit's own poll whether or not a token was issued. The plugin asks for a token on the same condition the app uses (a known local IP on an adaptor that supports it), and if the LAN request fails it pauses that unit's fast path for 15 minutes rather than paying for a doomed request every time. Commands keep working either way; they just arrive on the unit's poll instead of instantly.
 
-Not every adaptor serves the local endpoint. A **MAC-568IF-E** answers `HTTP 403 Forbidden` on `/smart` and then closes the connection, so that unit runs on MELView delivery; the app's own bundle likewise does no local request for `mac568`.
+The fast path does not work everywhere, and the log now names the address it tried so you can tell why:
+
+- **A timeout or `ECONNREFUSED`** — the host cannot reach the unit. On a segmented network, allow Homebridge to reach the unit's IP on port 80.
+- **`HTTP 403 Forbidden` (or `401`)** — something at that address answered and *refused*. A unit you cannot route to would not reply at all, so this usually means a firewall or proxy in the path intercepted the request, or another device holds that IP from Homebridge's point of view. Worth checking before assuming the adaptor is at fault: the Wi-Fi Control app's own bundle does no local request for `mac568`/`mac578` adaptors, so there is little public evidence of what they serve on `/smart`.
+
+Either way the unit still follows commands over MELView delivery; only the speed is lost.
 
 This isn't fully offline local control — MELView is still used for login, discovery, and authorization — but the LAN hop makes commands feel far snappier than cloud-only integrations, and the plugin applies the unit's returned state immediately so the tile reflects reality without waiting for the next poll.
 

@@ -3,6 +3,27 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Accepted commands are logged.** A successful change produced nothing in the
+  log above debug level, so there was no sign it had gone through. Each
+  accepted command now logs one info line naming the delivery route - applied
+  over the LAN, or accepted by MELView for the unit's next poll, which also
+  explains why a cloud-delivered change is not instant.
+
+### Changed
+- LAN failures now name the **address** that was tried, which is what a
+  firewall rule has to be written against, and an `HTTP 401`/`403` from it adds
+  what that usually means: something at that address answered and refused, so
+  on a segmented network it is likelier a firewall in the path or another
+  device on that IP than the unit itself.
+- **Softens a claim in 1.5.2.** That release attributed the `403` on `/smart`
+  to the MAC-568IF-E adaptor. That is not established - the unit observed is on
+  a separate VLAN, where an intercepting firewall would produce the same reply.
+  The documentation now explains how to tell the two apart instead of naming a
+  cause it cannot prove.
+
 ## [1.5.2] - 2026-10-20
 
 ### Fixed
