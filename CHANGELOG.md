@@ -3,6 +3,27 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Commands no longer go missing when the LAN hop fails.** Sending `lc` asks
+  MELView for a local command token and makes the direct LAN request
+  responsible for delivering the command - it is not merely a fast path. The
+  plugin asked for a token unconditionally, so whenever the LAN request failed
+  (or no local IP was known at all, where it was skipped outright) the unit
+  never saw the command, while MELView had still answered `ok` and Home kept
+  the value it was given. A token is now requested only when the unit's LAN
+  address is known, a failed LAN hop re-sends the command for MELView to
+  deliver on the unit's own poll, and that unit's local commands pause for 15
+  minutes before being tried again.
+- A LAN reply the unit cuts short no longer counts as a failure. The Wi-Fi
+  adapter hangs up as soon as it has answered, often before finishing the body
+  it announced, which Node reports as `terminated`; the status line is already
+  proof the unit took the command. Whatever bytes did arrive are kept and
+  logged at debug instead of being discarded with the failed read.
+- LAN warnings that do matter now name the unit and the underlying cause
+  (for example `ECONNREFUSED`) instead of an opaque `fetch failed`.
+
 ## [1.5.0] - 2026-10-19
 
 ### Fixed

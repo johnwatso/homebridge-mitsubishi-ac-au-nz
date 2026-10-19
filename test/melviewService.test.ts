@@ -12,8 +12,21 @@ function silentLog(): Logger {
     return {debug: noop, info: noop, warn: noop, error: noop, log: noop, success: noop} as unknown as Logger;
 }
 
-function service(): MelviewService {
-    return new MelviewService(silentLog(),
+/** A log that keeps what it was told, so tests can assert on the noise a user sees. */
+function recordingLog(): Logger & { warnings: string[]; debugs: string[] } {
+    const warnings: string[] = [];
+    const debugs: string[] = [];
+    const noop = () => undefined;
+    return {
+        info: noop, error: noop, log: noop, success: noop,
+        warn: (...args: unknown[]) => warnings.push(args.join(' ')),
+        debug: (...args: unknown[]) => debugs.push(args.join(' ')),
+        warnings, debugs,
+    } as unknown as Logger & { warnings: string[]; debugs: string[] };
+}
+
+function service(log: Logger = silentLog()): MelviewService {
+    return new MelviewService(log,
         {user: 'u@example.com', password: 'secret'} as unknown as PlatformConfig,
         {} as API);
 }
@@ -45,14 +58,45 @@ function loginResponse(): Response {
     });
 }
 
-function command(): Command {
+function command(localCommandURL?: string): Command {
     return {
         execute: () => 'PW1',
         apply: () => undefined,
         getUnitID: () => 'u1',
-        getLocalCommandURL: () => undefined,
+        getLocalCommandURL: () => localCommandURL,
         getLocalCommandBody: () => '<ESV>TOKEN</ESV>',
     };
+}
+
+/** Accepted command, carrying the local-command key that triggers the LAN nudge. */
+function acceptedCommandResponse(): Response {
+    return new Response(JSON.stringify({error: 'ok', lc: 'LOCALKEY'}), {status: 200});
+}
+
+/**
+ * What the Wi-Fi adapter actually sends: a status line and a partial body,
+ * then the socket is cut, which undici surfaces as `Error: terminated`.
+ */
+function truncatedBodyResponse(): Response {
+    let sent = false;
+    // Errors on `pull`, not `start`: enqueueing and then erroring in the same
+    // turn drops the queued chunk, which is not what a dying socket does.
+    return new Response(new ReadableStream({
+        pull(controller) {
+            if (!sent) {
+                sent = true;
+                controller.enqueue(new TextEncoder().encode('<?xml version="1.0"'));
+                return;
+            }
+            controller.error(new Error('terminated'));
+        },
+    }), {status: 200});
+}
+
+/** The JSON payloads sent to unitcommand.aspx, in order. */
+function commandPayloads(calls: { url: string; init?: RequestInit }[]): Record<string, unknown>[] {
+    return calls.filter(c => c.url.endsWith('unitcommand.aspx'))
+        .map(c => JSON.parse(String(c.init?.body)) as Record<string, unknown>);
 }
 
 const realFetch = globalThis.fetch;
@@ -254,4 +298,89 @@ test('capabilities missing an optional field are kept; an error envelope is not'
     assert.equal((await service().capabilities('u1')).fanstage, undefined);
     stubFetch([loginResponse(), new Response(JSON.stringify({error: 'offline'}))]);
     await assert.rejects(service().capabilities('u1'), /invalid capabilities/);
+});
+
+test('a LAN hop the unit cuts short counts as delivered and is not re-sent', async () => {
+    const {calls} = stubFetch([loginResponse(), acceptedCommandResponse(), truncatedBodyResponse()]);
+    const log = recordingLog();
+
+    await service(log).command(command('http://192.168.1.50/smart'));
+
+    assert.deepEqual(log.warnings, []);
+    // Whatever the unit managed to send is the only evidence of how it took the
+    // command, so it has to survive the failed read.
+    assert.ok(log.debugs.some(d => d.includes('cut the LAN reply short') && d.includes('<?xml version="1.0"')),
+        `partial reply was not logged: ${JSON.stringify(log.debugs)}`);
+    assert.equal(commandPayloads(calls).length, 1);
+});
+
+test('a command MELView handed to a dead LAN hop is re-sent for MELView to deliver', async () => {
+    const {calls} = stubFetch([loginResponse(), acceptedCommandResponse(), acceptedCommandResponse()]);
+    const log = recordingLog();
+    const queued = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes('/smart')) {
+            throw new TypeError('fetch failed',
+                {cause: Object.assign(new Error('connect ECONNREFUSED'), {code: 'ECONNREFUSED'})});
+        }
+        return queued(url as string, init);
+    }) as typeof fetch;
+
+    await service(log).command(command('http://192.168.1.50/smart'));
+
+    const payloads = commandPayloads(calls);
+    assert.equal(payloads.length, 2, 'the undelivered command should be re-sent');
+    assert.equal(payloads[0].lc, 1);
+    // The re-send must not ask for a token again, or MELView hands delivery
+    // straight back to the hop that just failed.
+    assert.equal(payloads[1].lc, undefined);
+    assert.equal(payloads[1].commands, 'PW1');
+    assert.ok(log.warnings.some(w => /Unable to access unit u1 via direct LAN interface.*ECONNREFUSED/.test(w)),
+        `missing LAN warning: ${JSON.stringify(log.warnings)}`);
+    assert.ok(log.warnings.some(w => w.includes('re-sending it for MELView to deliver')));
+});
+
+test('a unit that rejects the LAN hop outright also falls back to MELView', async () => {
+    const {calls} = stubFetch([loginResponse(), acceptedCommandResponse(),
+        new Response('no', {status: 500, statusText: 'Internal Server Error'}),
+        acceptedCommandResponse()]);
+    const log = recordingLog();
+
+    await service(log).command(command('http://192.168.1.50/smart'));
+
+    assert.equal(commandPayloads(calls).length, 2);
+    assert.ok(log.warnings.some(w => w.includes('HTTP 500')), JSON.stringify(log.warnings));
+});
+
+test('a unit with no known LAN address is never handed local delivery', async () => {
+    const {calls} = stubFetch([loginResponse(), acceptedCommandResponse()]);
+
+    await service().command(command());
+
+    // Requesting a token with no way to use it drops the command entirely.
+    assert.equal(commandPayloads(calls)[0].lc, undefined);
+    assert.equal(calls.filter(c => c.url.includes('/smart')).length, 0);
+});
+
+test('after a failed LAN hop the following commands leave delivery to MELView', async () => {
+    const {calls} = stubFetch([loginResponse(), acceptedCommandResponse(), acceptedCommandResponse(),
+        acceptedCommandResponse()]);
+    const queued = globalThis.fetch;
+    let smartCalls = 0;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes('/smart')) {
+            smartCalls++;
+            throw new TypeError('fetch failed');
+        }
+        return queued(url as string, init);
+    }) as typeof fetch;
+    const s = service();
+
+    await s.command(command('http://192.168.1.50/smart'));
+    await s.command(command('http://192.168.1.50/smart'));
+
+    assert.equal(smartCalls, 1, 'the LAN hop should not be retried during the cooldown');
+    const payloads = commandPayloads(calls);
+    assert.equal(payloads.length, 3, 'first command sent twice, second once');
+    assert.equal(payloads[2].lc, undefined);
 });

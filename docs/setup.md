@@ -35,6 +35,8 @@ Control is **MELView-assisted with a local fast path**. For each command the plu
    http://<unit-local-ip>/smart
    ```
 
+Asking MELView for that token is not just a hint: it makes the LAN request responsible for **delivering** the command, so the plugin only asks when it knows the unit's LAN IP. If the LAN request then fails, the command is immediately re-sent **without** a token, so MELView delivers it on the unit's own poll, and local commands pause for 15 minutes before being tried again. A command therefore still arrives when the LAN path is blocked — just not as quickly.
+
 This isn't fully offline local control — MELView is still used for login, discovery, and authorization — but the LAN hop makes commands feel far snappier than cloud-only integrations, and the plugin applies the unit's returned state immediately so the tile reflects reality without waiting for the next poll.
 
 The plugin exposes each unit as a Matter `RoomAirConditioner` (OnOff + Thermostat + FanControl), plus an optional `TemperatureSensor` for outdoor temperature.
@@ -139,13 +141,16 @@ Earlier versions of this plugin published over HAP. On the first launch after up
 > [!IMPORTANT]
 > This plugin is **not fully local-only.** It uses MELView for login, discovery, status polling, and command authorization; only the per-command follow-up goes directly to the unit over your LAN.
 
+If the Homebridge host cannot reach a unit's LAN IP, that unit's commands fall back to MELView delivery, which is slower but reliable. The fallback is per-unit and logged.
+
 For best results, the Homebridge host should be able to reach each Wi-Fi module's local IP. If Homebridge and your heat pumps are on different VLANs, allow traffic from Homebridge to the modules.
 
 ## Troubleshooting
 - **`Matter is not enabled for this bridge`** — add a `matter` block to the bridge this plugin runs on; see [Enabling Matter](#enabling-matter). If the plugin is in a child bridge, the block must go inside its `_bridge` settings, not on the main bridge — see [Running in a child bridge](#running-in-a-child-bridge).
 - **The AC doesn't appear after pairing** — confirm the Homebridge Matter bridge is paired into your ecosystem, and that the log shows `Adding new Matter accessory`. Give it a moment to publish.
 - **"Plugin has not been configured"** — add your MELView `user` and `password` in the plugin config.
-- **"Unable to refresh … from MELView" / "Unable to access unit via direct LAN interface"** — usually network reachability: confirm the Homebridge host can reach the unit's LAN IP, and check VLAN/firewall rules. Cloud-only operation still works without the LAN path, just less snappily. The message names the cause (HTTP status, or a timeout).
+- **"Unable to refresh … from MELView" / "Unable to access unit … via direct LAN interface"** — usually network reachability: confirm the Homebridge host can reach the unit's LAN IP, and check VLAN/firewall rules. The message names the unit and the cause (HTTP status, timeout, or a socket error such as `ECONNREFUSED`). The command itself is not lost: the log then shows it being re-sent for MELView to deliver, and local commands pause for 15 minutes. Commands keep working without the LAN path, just less snappily.
+- **Home accepts a change but the unit never responds** — a failed LAN hop used to drop the command silently, because asking MELView for a local token hands it delivery. That is fixed; if you still see it, check the log for `re-sending it for MELView to deliver` and whether the re-send is rejected.
 - **Login fails / auth token errors** — verify the credentials work in the Mitsubishi Wi-Fi Control app; you may need to reset your password with Mitsubishi. The session is refreshed automatically before it expires, and re-established once if MELView rejects it mid-session, so a bridge restart shouldn't be needed.
 - **A unit disappeared** — the plugin only removes accessories MELView genuinely stops reporting; a one-off empty/erroring response is ignored. If a unit was removed in MELView, it is removed here too.
 - **More detail** — enable Homebridge debug logging (`-D`) to see per-command and per-poll diagnostics.

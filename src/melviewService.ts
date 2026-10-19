@@ -20,6 +20,11 @@ const REQUEST_TIMEOUT_MS = 15000;
 const LOCAL_TIMEOUT_MS = 2000;
 /** Re-login this long before the cookie actually expires, so a poll never races the expiry. */
 export const AUTH_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+/**
+ * How long to leave delivery to MELView after a LAN hop has failed, rather than
+ * paying a failed local request plus a re-send on every command.
+ */
+export const LOCAL_DELIVERY_COOLDOWN_MS = 15 * 60 * 1000;
 
 /**
  * Raised when MELView refuses the session cookie. Callers re-login once and
@@ -71,16 +76,58 @@ export function cookieExpiresWithin(cookie: Cookie | undefined, marginMs: number
 
 /** Fetch rejections are otherwise opaque ('fetch failed'); name the cause. */
 function describeRequestFailure(e: unknown): string {
-  if (e instanceof Error) {
-    return e.name === 'TimeoutError' || e.name === 'AbortError' ? 'the request timed out' : e.message;
+  if (!(e instanceof Error)) {
+    return String(e);
   }
-  return String(e);
+  if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+    return 'the request timed out';
+  }
+  // undici keeps the useful part out of the message it throws ('fetch failed',
+  // 'terminated') and nests it as a cause, so walk the chain. Causes already
+  // named in the message are skipped, since `post` describes the error it wraps.
+  const causes: string[] = [];
+  let cause: unknown = e.cause;
+  while (cause instanceof Error && causes.length < 3) {
+    const detail = (cause as NodeJS.ErrnoException).code ?? cause.message;
+    if (detail && !e.message.includes(detail) && !causes.includes(detail)) {
+      causes.push(detail);
+    }
+    cause = cause.cause;
+  }
+  return causes.length > 0 ? `${e.message} (${causes.join(': ')})` : e.message;
 }
 
 /** A short, log-safe excerpt of an unexpected (usually HTML) response body. */
 function excerpt(body: string): string {
   const collapsed = body.replace(/\s+/g, ' ').trim();
   return collapsed.length > 120 ? `${collapsed.slice(0, 120)}...` : collapsed;
+}
+
+/**
+ * Read a body, keeping whatever arrived when the connection dies mid-stream.
+ * The unit's reply is the only evidence of how it took a local command, so a
+ * truncated read must not discard it - `Response.text()` throws it away.
+ */
+async function readBodyBestEffort(response: Response): Promise<{ body: string; truncated?: string }> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return {body: ''};
+  }
+  const chunks: Uint8Array[] = [];
+  try {
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value) {
+        chunks.push(value);
+      }
+    }
+  } catch (e) {
+    return {body: Buffer.concat(chunks).toString('utf8'), truncated: describeRequestFailure(e)};
+  }
+  return {body: Buffer.concat(chunks).toString('utf8')};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -101,6 +148,8 @@ function isNumeric(value: unknown): boolean {
 export class MelviewService {
     private auth?: Cookie;
     private loginInFlight?: Promise<Account>;
+    /** Unit ID -> when local delivery may be attempted again. */
+    private localDeliveryRetryAt = new Map<string, number>();
 
     constructor(
         public readonly log: Logger,
@@ -206,22 +255,55 @@ export class MelviewService {
      */
     public async command(command : Command, ...commandChain: Command[]): Promise<CommandResponse> {
       const allComms = [command, ...commandChain].map(c => c.execute()).join(',');
-      const payload = {
-        unitid: command.getUnitID(),
-        v: 2,
-        commands: allComms,
-        lc: 1,
-      };
+      const unitID = command.getUnitID();
+
+      // Only our own request for a token puts us on the hook for delivery; a
+      // token MELView volunteers is not a transfer of responsibility.
+      const handedLocalDelivery = this.localDeliveryUsable(command);
+      const rBody = await this.postCommand(unitID, allComms, handedLocalDelivery);
+      if (handedLocalDelivery && rBody.lc && rBody.lc.length > 0 &&
+        !await this.dispatchLocalCommand(command, rBody.lc)) {
+        // MELView handed delivery to us and the LAN hop did not complete, so
+        // the unit never saw this command. Leave the following ones to MELView
+        // and re-send this one for it to deliver on the unit's own poll.
+        this.localDeliveryRetryAt.set(unitID, Date.now() + LOCAL_DELIVERY_COOLDOWN_MS);
+        this.log.warn('Could not hand the command for unit', unitID,
+          'to the unit over the LAN - re-sending it for MELView to deliver.',
+          `Local commands pause for ${Math.round(LOCAL_DELIVERY_COOLDOWN_MS / 60000)} minutes.`);
+        return this.postCommand(unitID, allComms, false);
+      }
+      return rBody;
+    }
+
+    /**
+     * Send one command set to MELView.
+     *
+     * `lc` is not a hint: asking for a local command token makes the LAN hop
+     * responsible for getting the command to the unit, so it is only requested
+     * when that hop is usable. Without it MELView delivers on the unit's own
+     * poll - slower, but it arrives.
+     */
+    private async postCommand(unitID: string, commands: string, requestLocalToken: boolean): Promise<CommandResponse> {
+      const payload: Record<string, unknown> = {unitid: unitID, v: 2, commands};
+      if (requestLocalToken) {
+        payload.lc = 1;
+      }
       this.log.debug('cmd:', JSON.stringify(payload));
 
       const rBody = await this.authedRequest<CommandResponse>(COMMAND_SERVICE, payload);
       if (rBody.error !== 'ok') {
-        throw new Error(`MELView rejected command for unit ${command.getUnitID()}: ${rBody.error || 'unknown error'}.`);
-      }
-      if (rBody.lc && rBody.lc.length > 0) {
-        this.dispatchLocalCommand(command, rBody.lc);
+        throw new Error(`MELView rejected command for unit ${unitID}: ${rBody.error || 'unknown error'}.`);
       }
       return rBody;
+    }
+
+    /** Whether the LAN hop is worth asking MELView to rely on for this unit. */
+    private localDeliveryUsable(command: Command): boolean {
+      if (!command.getLocalCommandURL()) {
+        return false;
+      }
+      const retryAt = this.localDeliveryRetryAt.get(command.getUnitID());
+      return retryAt === undefined || Date.now() >= retryAt;
     }
 
     /**
@@ -315,30 +397,46 @@ export class MelviewService {
     }
 
     /**
-     * Nudge the unit over the LAN so it applies the command without waiting for
-     * its own cloud poll. Entirely optional: the cloud command has already been
-     * accepted by the time this runs.
+     * Hand the command to the unit over the LAN, using the token MELView issued.
+     *
+     * This is how the command reaches the unit once `lc` was requested, not a
+     * mere accelerator, so the caller needs to know whether it worked.
+     *
+     * @returns whether the unit took the command.
      */
-    private dispatchLocalCommand(command: Command, key: string): void {
+    private async dispatchLocalCommand(command: Command, key: string): Promise<boolean> {
       const url = command.getLocalCommandURL();
       if (!url) {
         this.log.debug('No LAN address known for unit', command.getUnitID(), '- skipping the direct request.');
-        return;
+        return false;
       }
-      this.post(url, {
-        headers: {'Content-Type': 'text/xml'},
-        body: command.getLocalCommandBody(key),
-        timeoutMs: LOCAL_TIMEOUT_MS,
-      })
-        .then(async r => {
-          const body = await r.text();
-          if (!r.ok) {
-            throw new Error(`the unit returned HTTP ${r.status} ${r.statusText}${body ? `: ${excerpt(body)}` : ''}`);
-          }
-          return body;
-        })
-        .then(v => this.log.debug('Successfully processed local request:', v))
-        .catch(e => this.log.warn('Unable to access unit via direct LAN interface:', describeRequestFailure(e)));
+      try {
+        const response = await this.post(url, {
+          headers: {'Content-Type': 'text/xml'},
+          body: command.getLocalCommandBody(key),
+          timeoutMs: LOCAL_TIMEOUT_MS,
+        });
+        const {body, truncated} = await readBodyBestEffort(response);
+        if (!response.ok) {
+          throw new Error(`the unit returned HTTP ${response.status} ${response.statusText}` +
+            `${body ? `: ${excerpt(body)}` : ''}`);
+        }
+        // The Wi-Fi adapter hangs up as soon as it has answered, often before
+        // finishing the body it announced, which undici reports as 'terminated'.
+        // The status line is already proof the unit took the command, so a reply
+        // we cannot finish reading is not a failure.
+        if (truncated) {
+          this.log.debug('Unit', command.getUnitID(), 'cut the LAN reply short:', truncated,
+            '- it had sent:', excerpt(body) || '(nothing)');
+        } else {
+          this.log.debug('Successfully processed local request:', body);
+        }
+        return true;
+      } catch (e) {
+        this.log.warn('Unable to access unit', command.getUnitID(),
+          'via direct LAN interface:', describeRequestFailure(e));
+        return false;
+      }
     }
 
     private async post(url: string, init: {
