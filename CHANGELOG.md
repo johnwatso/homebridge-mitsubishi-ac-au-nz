@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Commands reached MELView but never the unit.** Every request now carries
+  `v: 5`, the API version the Wi-Fi Control app sends on unitcommand,
+  unitcapabilities and energyreport alike. Commands were going out as the
+  legacy `v: 2`, which MELView accepts and answers `error: "ok"` to without
+  ever delivering them, so Home showed the change and the heat pump never
+  moved. The login `appversion` likewise moves from the 2021 `5.3.1348` to the
+  current `6.5.2258`, and status and capability calls now carry the version
+  too, as the app's own bundle does.
+
+### Changed
+- **Corrects the 1.5.1 note below.** Requesting `lc` does *not* make the LAN
+  request responsible for delivering a command: the Wi-Fi Control app sets
+  `lc = 1` for `mac568` adaptors and then deliberately performs no local
+  request of its own, yet its commands arrive. MELView delivers on the unit's
+  own poll either way, so the LAN request is an accelerator, as originally
+  described. The 1.5.1 behaviour is kept regardless, because it is the right
+  shape for other reasons: a token is only requested when it can be used, a
+  refused fast path is paused for 15 minutes instead of being retried on every
+  command, and the re-send is cheap idempotent insurance.
+- A MAC-568IF-E answers `HTTP 403 Forbidden` on the local `/smart` endpoint, so
+  those units run on MELView delivery. This is now documented rather than
+  presented as a misconfiguration to chase.
+
 ## [1.5.1] - 2026-10-20
 
 ### Fixed

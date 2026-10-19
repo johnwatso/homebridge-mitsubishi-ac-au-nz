@@ -4,14 +4,28 @@ import {Account, Building, Capabilities, CommandResponse, EnergyReport, State} f
 import {Command} from './melviewCommand';
 
 const URL = 'https://api.melview.net/api/';
-const APP_VERSION = '5.3.1348';
+/**
+ * Login version string the Wi-Fi Control app sends, as its bundle builds it:
+ * `appversion` ("6." + apiversion) plus the build revision. The 5.3.1348 this
+ * plugin used to send is from a far older build.
+ */
+const APP_VERSION = '6.5.2258';
 const AUTH_SERVICE = 'login.aspx';
 const ROOMS_SERVICE = 'rooms.aspx';
 const COMMAND_SERVICE = 'unitcommand.aspx';
 const CAPABILITIES_SERVICE = 'unitcapabilities.aspx';
 const ENERGY_SERVICE = 'energyreport.aspx';
-/** API version the Wi-Fi Control app sends with energy report requests. */
-const ENERGY_API_VERSION = 5;
+/**
+ * API version the Wi-Fi Control app sends. In its bundle this is a single
+ * `app.apiversion`, sent as `v` on unitcommand, unitcapabilities and
+ * energyreport alike - the app's own comment reads
+ * "x.y y = unitcomand/energy postdata.v".
+ *
+ * This matters beyond politeness: MELView accepts the legacy `v: 2` that
+ * commands used to carry, answers `error: 'ok'`, and then never delivers the
+ * command to the unit.
+ */
+const API_VERSION = 5;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:54.0) Gecko/20100101 Firefox/54.0';
 
 /** Cloud calls give up rather than leaving a poll hanging forever. */
@@ -21,10 +35,12 @@ const LOCAL_TIMEOUT_MS = 2000;
 /** Re-login this long before the cookie actually expires, so a poll never races the expiry. */
 export const AUTH_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 /**
- * How long to leave delivery to MELView after a LAN hop has failed, rather than
- * paying a failed local request plus a re-send on every command.
+ * How long to stop trying the LAN fast path after it has failed, rather than
+ * paying a doomed local request on every command. Some adaptors refuse the
+ * local endpoint outright (MAC-568IF-E answers HTTP 403), and the failure is
+ * persistent rather than transient.
  */
-export const LOCAL_DELIVERY_COOLDOWN_MS = 15 * 60 * 1000;
+export const LOCAL_FASTPATH_COOLDOWN_MS = 15 * 60 * 1000;
 
 /**
  * Raised when MELView refuses the session cookie. Callers re-login once and
@@ -148,8 +164,8 @@ function isNumeric(value: unknown): boolean {
 export class MelviewService {
     private auth?: Cookie;
     private loginInFlight?: Promise<Account>;
-    /** Unit ID -> when local delivery may be attempted again. */
-    private localDeliveryRetryAt = new Map<string, number>();
+    /** Unit ID -> when the LAN fast path may be attempted again. */
+    private localFastPathRetryAt = new Map<string, number>();
 
     constructor(
         public readonly log: Logger,
@@ -237,7 +253,8 @@ export class MelviewService {
      * @param unitID is the unit identifier
      */
     public async capabilities(unitID: string): Promise<Capabilities> {
-      const capabilities = await this.authedRequest<Capabilities>(CAPABILITIES_SERVICE, {unitid: unitID});
+      const capabilities = await this.authedRequest<Capabilities>(CAPABILITIES_SERVICE,
+        {unitid: unitID, v: API_VERSION});
       // Reject MELView's error envelope, but not an otherwise valid payload
       // with fields missing: a missing fanstage is recoverable from the status
       // response, so it must not keep the unit out of Home entirely.
@@ -257,19 +274,19 @@ export class MelviewService {
       const allComms = [command, ...commandChain].map(c => c.execute()).join(',');
       const unitID = command.getUnitID();
 
-      // Only our own request for a token puts us on the hook for delivery; a
-      // token MELView volunteers is not a transfer of responsibility.
-      const handedLocalDelivery = this.localDeliveryUsable(command);
-      const rBody = await this.postCommand(unitID, allComms, handedLocalDelivery);
-      if (handedLocalDelivery && rBody.lc && rBody.lc.length > 0 &&
+      // Only ask for a token when the fast path can use one, as the app does.
+      const tryFastPath = this.localFastPathUsable(command);
+      const rBody = await this.postCommand(unitID, allComms, tryFastPath);
+      if (tryFastPath && rBody.lc && rBody.lc.length > 0 &&
         !await this.dispatchLocalCommand(command, rBody.lc)) {
-        // MELView handed delivery to us and the LAN hop did not complete, so
-        // the unit never saw this command. Leave the following ones to MELView
-        // and re-send this one for it to deliver on the unit's own poll.
-        this.localDeliveryRetryAt.set(unitID, Date.now() + LOCAL_DELIVERY_COOLDOWN_MS);
-        this.log.warn('Could not hand the command for unit', unitID,
-          'to the unit over the LAN - re-sending it for MELView to deliver.',
-          `Local commands pause for ${Math.round(LOCAL_DELIVERY_COOLDOWN_MS / 60000)} minutes.`);
+        // Stop paying for a fast path this unit refuses. The re-send is cheap
+        // insurance rather than a rescue: MELView delivers on the unit's own
+        // poll whether or not a token was issued, and re-stating the same
+        // target values is idempotent.
+        this.localFastPathRetryAt.set(unitID, Date.now() + LOCAL_FASTPATH_COOLDOWN_MS);
+        this.log.warn('Could not reach unit', unitID,
+          'over the LAN - leaving this command to MELView, which is slower.',
+          `The local fast path pauses for ${Math.round(LOCAL_FASTPATH_COOLDOWN_MS / 60000)} minutes.`);
         return this.postCommand(unitID, allComms, false);
       }
       return rBody;
@@ -278,13 +295,13 @@ export class MelviewService {
     /**
      * Send one command set to MELView.
      *
-     * `lc` is not a hint: asking for a local command token makes the LAN hop
-     * responsible for getting the command to the unit, so it is only requested
-     * when that hop is usable. Without it MELView delivers on the unit's own
-     * poll - slower, but it arrives.
+     * `lc` asks for a local command token to drive the LAN fast path, and is
+     * requested on the same condition the Wi-Fi Control app uses: a known
+     * local IP on an adaptor that supports it. MELView delivers the command on
+     * the unit's own poll either way, so the token only buys speed.
      */
     private async postCommand(unitID: string, commands: string, requestLocalToken: boolean): Promise<CommandResponse> {
-      const payload: Record<string, unknown> = {unitid: unitID, v: 2, commands};
+      const payload: Record<string, unknown> = {unitid: unitID, v: API_VERSION, commands};
       if (requestLocalToken) {
         payload.lc = 1;
       }
@@ -297,12 +314,12 @@ export class MelviewService {
       return rBody;
     }
 
-    /** Whether the LAN hop is worth asking MELView to rely on for this unit. */
-    private localDeliveryUsable(command: Command): boolean {
+    /** Whether the LAN fast path is worth attempting for this unit right now. */
+    private localFastPathUsable(command: Command): boolean {
       if (!command.getLocalCommandURL()) {
         return false;
       }
-      const retryAt = this.localDeliveryRetryAt.get(command.getUnitID());
+      const retryAt = this.localFastPathRetryAt.get(command.getUnitID());
       return retryAt === undefined || Date.now() >= retryAt;
     }
 
@@ -311,7 +328,7 @@ export class MelviewService {
      * @param unitID is the unit identifier
      */
     public async getStatus(unitID: string): Promise<State> {
-      const state = await this.authedRequest<State>(COMMAND_SERVICE, {unitid: unitID});
+      const state = await this.authedRequest<State>(COMMAND_SERVICE, {unitid: unitID, v: API_VERSION});
       if (!isRecord(state) || (state.power !== 0 && state.power !== 1) ||
         !Number.isFinite(state.setmode) || !Number.isFinite(state.setfan) ||
         !isNumeric(state.settemp) || !isNumeric(state.roomtemp)) {
@@ -333,7 +350,7 @@ export class MelviewService {
         period: 'D',
         startdate: startDate,
         rows,
-        v: ENERGY_API_VERSION,
+        v: API_VERSION,
       });
     }
 
@@ -397,10 +414,11 @@ export class MelviewService {
     }
 
     /**
-     * Hand the command to the unit over the LAN, using the token MELView issued.
+     * Push the command straight to the unit over the LAN, using the token
+     * MELView issued, so it applies without waiting for its own cloud poll.
      *
-     * This is how the command reaches the unit once `lc` was requested, not a
-     * mere accelerator, so the caller needs to know whether it worked.
+     * The caller needs the outcome to know whether to keep trying this unit:
+     * some adaptors refuse the endpoint permanently.
      *
      * @returns whether the unit took the command.
      */

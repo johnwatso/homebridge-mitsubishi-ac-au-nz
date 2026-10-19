@@ -35,7 +35,11 @@ Control is **MELView-assisted with a local fast path**. For each command the plu
    http://<unit-local-ip>/smart
    ```
 
-Asking MELView for that token is not just a hint: it makes the LAN request responsible for **delivering** the command, so the plugin only asks when it knows the unit's LAN IP. If the LAN request then fails, the command is immediately re-sent **without** a token, so MELView delivers it on the unit's own poll, and local commands pause for 15 minutes before being tried again. A command therefore still arrives when the LAN path is blocked — just not as quickly.
+Every call carries `v: 5`, the API version the Wi-Fi Control app sends. This is load-bearing, not cosmetic: MELView accepts an older `v` on a command, answers `error: "ok"`, and then never delivers it to the unit.
+
+The LAN request is only an accelerator — MELView delivers the command on the unit's own poll whether or not a token was issued. The plugin asks for a token on the same condition the app uses (a known local IP on an adaptor that supports it), and if the LAN request fails it pauses that unit's fast path for 15 minutes rather than paying for a doomed request every time. Commands keep working either way; they just arrive on the unit's poll instead of instantly.
+
+Not every adaptor serves the local endpoint. A **MAC-568IF-E** answers `HTTP 403 Forbidden` on `/smart` and then closes the connection, so that unit runs on MELView delivery; the app's own bundle likewise does no local request for `mac568`.
 
 This isn't fully offline local control — MELView is still used for login, discovery, and authorization — but the LAN hop makes commands feel far snappier than cloud-only integrations, and the plugin applies the unit's returned state immediately so the tile reflects reality without waiting for the next poll.
 
@@ -150,7 +154,7 @@ For best results, the Homebridge host should be able to reach each Wi-Fi module'
 - **The AC doesn't appear after pairing** — confirm the Homebridge Matter bridge is paired into your ecosystem, and that the log shows `Adding new Matter accessory`. Give it a moment to publish.
 - **"Plugin has not been configured"** — add your MELView `user` and `password` in the plugin config.
 - **"Unable to refresh … from MELView" / "Unable to access unit … via direct LAN interface"** — usually network reachability: confirm the Homebridge host can reach the unit's LAN IP, and check VLAN/firewall rules. The message names the unit and the cause (HTTP status, timeout, or a socket error such as `ECONNREFUSED`). The command itself is not lost: the log then shows it being re-sent for MELView to deliver, and local commands pause for 15 minutes. Commands keep working without the LAN path, just less snappily.
-- **Home accepts a change but the unit never responds** — a failed LAN hop used to drop the command silently, because asking MELView for a local token hands it delivery. That is fixed; if you still see it, check the log for `re-sending it for MELView to deliver` and whether the re-send is rejected.
+- **Home accepts a change but the unit never responds** — the cause was a stale API version: commands went out as `v: 2`, which MELView answers `ok` to and then never delivers. Fixed by sending `v: 5` (and the current login `appversion`) as the Wi-Fi Control app does. If you still see it, enable `-D` and confirm the `cmd:` line carries `"v":5`.
 - **Login fails / auth token errors** — verify the credentials work in the Mitsubishi Wi-Fi Control app; you may need to reset your password with Mitsubishi. The session is refreshed automatically before it expires, and re-established once if MELView rejects it mid-session, so a bridge restart shouldn't be needed.
 - **A unit disappeared** — the plugin only removes accessories MELView genuinely stops reporting; a one-off empty/erroring response is ignored. If a unit was removed in MELView, it is removed here too.
 - **More detail** — enable Homebridge debug logging (`-D`) to see per-command and per-poll diagnostics.

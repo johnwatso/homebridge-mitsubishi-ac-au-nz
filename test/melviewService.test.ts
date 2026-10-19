@@ -337,7 +337,7 @@ test('a command MELView handed to a dead LAN hop is re-sent for MELView to deliv
     assert.equal(payloads[1].commands, 'PW1');
     assert.ok(log.warnings.some(w => /Unable to access unit u1 via direct LAN interface.*ECONNREFUSED/.test(w)),
         `missing LAN warning: ${JSON.stringify(log.warnings)}`);
-    assert.ok(log.warnings.some(w => w.includes('re-sending it for MELView to deliver')));
+    assert.ok(log.warnings.some(w => w.includes('leaving this command to MELView')));
 });
 
 test('a unit that rejects the LAN hop outright also falls back to MELView', async () => {
@@ -383,4 +383,34 @@ test('after a failed LAN hop the following commands leave delivery to MELView', 
     const payloads = commandPayloads(calls);
     assert.equal(payloads.length, 3, 'first command sent twice, second once');
     assert.equal(payloads[2].lc, undefined);
+});
+
+test('every request carries the API version the Wi-Fi Control app sends', async () => {
+    const {calls} = stubFetch([loginResponse(), acceptedCommandResponse(),
+        new Response(JSON.stringify({id: 'u1', power: 1, setmode: 3, setfan: 1, settemp: '21', roomtemp: '20'})),
+        new Response(JSON.stringify({error: 'ok', fanstage: 5}))]);
+    const s = service();
+
+    await s.command(command());
+    await s.getStatus('u1');
+    await s.capabilities('u1');
+
+    // MELView answers `ok` to the legacy v:2 and then never delivers the
+    // command, so the version is load-bearing rather than cosmetic.
+    for (const payload of commandPayloads(calls)) {
+        assert.equal(payload.v, 5, `missing v:5 in ${JSON.stringify(payload)}`);
+    }
+    const capabilities = calls.filter(c => c.url.endsWith('unitcapabilities.aspx'))
+        .map(c => JSON.parse(String(c.init?.body)) as Record<string, unknown>);
+    assert.equal(capabilities.length, 1);
+    assert.equal(capabilities[0].v, 5);
+});
+
+test('login reports the current app version, not the 2021 build', async () => {
+    const {calls} = stubFetch([loginResponse()]);
+
+    await service().login();
+
+    const body = JSON.parse(String(calls[0].init?.body)) as Record<string, unknown>;
+    assert.equal(body.appversion, '6.5.2258');
 });
