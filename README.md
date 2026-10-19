@@ -65,6 +65,9 @@ Minimal `config.json`:
 }
 ```
 
+> [!TIP]
+> Want this plugin's Matter pairing kept separate from the rest of Homebridge? It runs in its own **child bridge** with no extra setup — just put the `matter` block inside `_bridge`. See [Running in a child bridge](docs/setup.md#running-in-a-child-bridge).
+
 ➡️ **Enabling Matter, all config options, pairing, migration, and troubleshooting: [Setup guide](docs/setup.md).**
 
 ## Documentation

@@ -7,6 +7,7 @@ Full installation, configuration, and troubleshooting for **homebridge-mitsubish
 - [How it works](#how-it-works)
 - [Installation](#installation)
 - [Enabling Matter](#enabling-matter)
+- [Running in a child bridge](#running-in-a-child-bridge)
 - [Configuration](#configuration)
 - [Migrating from the HAP version](#migrating-from-the-hap-version)
 - [Known limitations](#known-limitations)
@@ -60,11 +61,36 @@ npm install -g homebridge-mitsubishi-ac-au-nz
 ## Enabling Matter
 This plugin publishes Matter accessories, so Matter must be enabled on the bridge it runs on. If it isn't, the plugin logs `Matter is not enabled for this bridge…` and exposes nothing.
 
-1. Add a `matter` block to the Homebridge **bridge** config (or to this plugin's **child bridge** via its `_bridge` settings). Homebridge then starts a Matter server.
+1. Add a `matter` block to the Homebridge **bridge** config — or, if the plugin runs in its own child bridge, to that bridge's `_bridge` block (see [Running in a child bridge](#running-in-a-child-bridge)). Homebridge then starts a Matter server.
 2. Restart Homebridge. A **Matter pairing code** appears in the Homebridge log and Config UI.
 3. Add that code to Apple Home (or Google Home / Alexa / SmartThings) like any Matter accessory.
 
 See the [Homebridge Matter docs](https://github.com/homebridge-plugins/homebridge-matter/wiki/Enabling-Matter). Homebridge's Matter support is still **experimental**.
+
+## Running in a child bridge
+This plugin works in its own **child bridge** as-is — nothing extra to install or enable on the plugin side. It is a tidy option if you'd rather keep its Matter pairing separate from everything else on your bridge, or want it to restart independently.
+
+Turn it on from the Config UI (the plugin's **⋮ → Bridge Settings**), or add a `_bridge` block to the platform config yourself. The important part: when the plugin runs in a child bridge, the `matter` block goes **inside `_bridge`** — a `matter` block on the main bridge does not reach it, and the plugin will log `Matter is not enabled for this bridge…`.
+
+```json
+{
+  "platform": "MitsubishiAUNZ",
+  "user": "user@example.com",
+  "password": "your-password",
+  "_bridge": {
+    "name": "Mitsubishi AC",
+    "username": "0E:1A:2B:3C:4D:5E",
+    "pin": "031-45-154",
+    "matter": {}
+  }
+}
+```
+
+The child bridge then advertises its **own Matter pairing code**, separate from the main bridge's — pair that one into Apple Home and the units appear under it.
+
+- `username` must be unique across your Homebridge install; the Config UI generates one for you.
+- This plugin publishes nothing over HAP, so you can add `"hap": { "enabled": false }` next to `matter` to stop the child bridge advertising an empty HomeKit bridge.
+- Moving an **already-paired** setup into a child bridge is a re-pair: the Matter bridge identity changes, so the old tiles disappear and room assignments, names, and automations need setting up again. Do it before pairing if you can.
 
 ## Configuration
 Add the platform to your Homebridge `config.json`:
@@ -116,7 +142,7 @@ Earlier versions of this plugin published over HAP. On the first launch after up
 For best results, the Homebridge host should be able to reach each Wi-Fi module's local IP. If Homebridge and your heat pumps are on different VLANs, allow traffic from Homebridge to the modules.
 
 ## Troubleshooting
-- **`Matter is not enabled for this bridge`** — add a `matter` block to the bridge (or child bridge) this plugin runs on; see [Enabling Matter](#enabling-matter).
+- **`Matter is not enabled for this bridge`** — add a `matter` block to the bridge this plugin runs on; see [Enabling Matter](#enabling-matter). If the plugin is in a child bridge, the block must go inside its `_bridge` settings, not on the main bridge — see [Running in a child bridge](#running-in-a-child-bridge).
 - **The AC doesn't appear after pairing** — confirm the Homebridge Matter bridge is paired into your ecosystem, and that the log shows `Adding new Matter accessory`. Give it a moment to publish.
 - **"Plugin has not been configured"** — add your MELView `user` and `password` in the plugin config.
 - **"Unable to refresh … from MELView" / "Unable to access unit via direct LAN interface"** — usually network reachability: confirm the Homebridge host can reach the unit's LAN IP, and check VLAN/firewall rules. Cloud-only operation still works without the LAN path, just less snappily. The message names the cause (HTTP status, or a timeout).
