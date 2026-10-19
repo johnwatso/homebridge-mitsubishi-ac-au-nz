@@ -364,7 +364,7 @@ test('a unit with no known LAN address is never handed local delivery', async ()
     assert.equal(calls.filter(c => c.url.includes('/smart')).length, 0);
 });
 
-test('after a failed LAN hop the following commands leave delivery to MELView', async () => {
+test('an unreachable unit is retried later, unlike a refusal', async () => {
     const {calls} = stubFetch([loginResponse(), acceptedCommandResponse(), acceptedCommandResponse(),
         acceptedCommandResponse()]);
     const queued = globalThis.fetch;
@@ -440,16 +440,25 @@ test('a command the unit takes over the LAN says so', async () => {
     assert.ok(!log.infos.some(i => i.includes('next poll')), 'the LAN route is not the slow route');
 });
 
-test('an HTTP rejection names the address and what it usually means', async () => {
-    stubFetch([loginResponse(), acceptedCommandResponse(),
-        new Response('', {status: 403, statusText: 'Forbidden'}), acceptedCommandResponse()]);
+test('a refusal names the address and stands down for good', async () => {
+    const {calls} = stubFetch([loginResponse(), acceptedCommandResponse(),
+        new Response('Forbidden', {status: 403, statusText: 'Forbidden'}),
+        acceptedCommandResponse(), acceptedCommandResponse()]);
     const log = recordingLog();
+    const s = service(log);
 
-    await service(log).command(command('http://192.168.9.21/smart'));
+    await s.command(command('http://192.168.9.21/smart'));
+    await s.command(command('http://192.168.9.21/smart'));
 
     const warning = log.warnings.find(w => w.includes('403'));
     assert.ok(warning, `no 403 warning: ${JSON.stringify(log.warnings)}`);
-    // The address is what a firewall rule has to be written against.
+    // The address is what any network-side fix has to be aimed at.
     assert.match(warning, /192\.168\.9\.21/);
-    assert.match(warning, /firewall in the path or another device on that IP/);
+    assert.ok(log.warnings.some(w => w.includes('refuses local commands')));
+    // A refusal is settled, so the second command must not ask for a token.
+    const payloads = commandPayloads(calls);
+    assert.equal(payloads.length, 3, 'first command sent twice, second once');
+    assert.equal(payloads[2].lc, undefined);
+    assert.equal(calls.filter(c => c.url.includes('/smart')).length, 1,
+        'a refused endpoint should not be probed again');
 });

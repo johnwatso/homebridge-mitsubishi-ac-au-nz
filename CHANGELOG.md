@@ -13,16 +13,23 @@ All notable changes to this project are documented here. This project follows
   explains why a cloud-delivered change is not instant.
 
 ### Changed
-- LAN failures now name the **address** that was tried, which is what a
-  firewall rule has to be written against, and an `HTTP 401`/`403` from it adds
-  what that usually means: something at that address answered and refused, so
-  on a segmented network it is likelier a firewall in the path or another
-  device on that IP than the unit itself.
-- **Softens a claim in 1.5.2.** That release attributed the `403` on `/smart`
-  to the MAC-568IF-E adaptor. That is not established - the unit observed is on
-  a separate VLAN, where an intercepting firewall would produce the same reply.
-  The documentation now explains how to tell the two apart instead of naming a
-  cause it cannot prove.
+- **A refused local endpoint is no longer retried every 15 minutes.** An
+  `HTTP 401`/`403` from the unit is the adaptor's settled answer, not a
+  transient fault, so the fast path now stands down for that unit until the
+  bridge restarts. An unreachable host keeps the 15 minute retry, since it may
+  simply be briefly off the network.
+- LAN warnings name the **address** that was tried, and a refusal is reported
+  as a refusal rather than as a failure to reach the unit.
+- **Replaces the speculation in 1.5.2 with a measurement.** 1.5.2 blamed the
+  MAC-568IF-E for the `403`; an intermediate note then blamed a possible
+  firewall. Probing the adaptor settles it: unknown paths return `404
+  Not Found` as `text/plain` while `/smart` returns `403 Forbidden` as
+  `text/html` with `Connection: close`, from the same server with no `Server`
+  header - path-aware replies from the adaptor itself, on `GET`, `POST` and
+  `OPTIONS` alike. The `Connection: close` also explains the `terminated`
+  errors seen before 1.5.1. The unit was reachable on port 80 throughout, from
+  a host on a different subnet; the setup guide now documents how to tell the
+  adaptor's refusal apart from a network problem.
 
 ## [1.5.2] - 2026-10-20
 

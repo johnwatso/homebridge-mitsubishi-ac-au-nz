@@ -41,8 +41,19 @@ The LAN request is only an accelerator — MELView delivers the command on the u
 
 The fast path does not work everywhere, and the log now names the address it tried so you can tell why:
 
-- **A timeout or `ECONNREFUSED`** — the host cannot reach the unit. On a segmented network, allow Homebridge to reach the unit's IP on port 80.
-- **`HTTP 403 Forbidden` (or `401`)** — something at that address answered and *refused*. A unit you cannot route to would not reply at all, so this usually means a firewall or proxy in the path intercepted the request, or another device holds that IP from Homebridge's point of view. Worth checking before assuming the adaptor is at fault: the Wi-Fi Control app's own bundle does no local request for `mac568`/`mac578` adaptors, so there is little public evidence of what they serve on `/smart`.
+- **A timeout or `ECONNREFUSED`** — the host cannot reach the unit. On a segmented network, allow Homebridge to reach the unit's IP on port 80. The plugin pauses that unit's fast path for 15 minutes and tries again, since an unreachable host may just be briefly off the network.
+- **`HTTP 403 Forbidden` (or `401`)** — the adaptor answered and declined. A refusal is settled rather than transient, so the plugin stops using the fast path for that unit until the bridge restarts instead of asking again every command.
+
+  To confirm it is the adaptor replying, and not a firewall or some other device holding that IP, ask it for a path that cannot exist and compare:
+
+  ```bash
+  curl -i http://<unit-local-ip>/nope
+  curl -i http://<unit-local-ip>/smart
+  ```
+
+  A MAC-568IF-E answers the unknown path `404 Not Found` as `text/plain`, and `/smart` `403 Forbidden` as `text/html` with `Connection: close` — path-aware replies, with no `Server` header, from a bare embedded server. A firewall or proxy would announce itself in a `Server` header and usually serve HTML for both. It refuses `/smart` on `GET`, `POST` and `OPTIONS` alike, so it is not a matter of the method used.
+
+  One MAC-568IF-E was observed refusing `/smart` this way from hosts on a **different subnet from the unit**, while remaining fully reachable on port 80. If your Homebridge host and your units are on different VLANs, that is the likeliest reason; to test it, repeat the `curl` above from a host on the unit's own subnet. The Wi-Fi Control app only ever issues local requests from a phone on the same network, and its bundle makes no local request at all for `mac568`/`mac578`, so there is no vendor behaviour to compare against here.
 
 Either way the unit still follows commands over MELView delivery; only the speed is lost.
 

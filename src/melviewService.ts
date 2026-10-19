@@ -50,6 +50,15 @@ export const LOCAL_FASTPATH_COOLDOWN_MS = 15 * 60 * 1000;
 class SessionRejectedError extends Error {}
 
 /**
+ * How a unit answered a local command.
+ *
+ * `refused` is worth separating from `unreachable`: an HTTP rejection is the
+ * adaptor's settled answer, so retrying it only wastes a request per command,
+ * while an unreachable host may simply be asleep or briefly off the network.
+ */
+type LocalDispatch = 'delivered' | 'refused' | 'unreachable';
+
+/**
  * Pick the `auth` cookie out of the response's Set-Cookie headers.
  *
  * Exported for testing. Each header must be parsed individually - Set-Cookie
@@ -278,18 +287,28 @@ export class MelviewService {
       const tryFastPath = this.localFastPathUsable(command);
       const rBody = await this.postCommand(unitID, allComms, tryFastPath);
       if (tryFastPath && rBody.lc && rBody.lc.length > 0) {
-        if (await this.dispatchLocalCommand(command, rBody.lc)) {
+        const outcome = await this.dispatchLocalCommand(command, rBody.lc);
+        if (outcome === 'delivered') {
           this.log.info('Unit', unitID, 'applied', allComms, 'over the LAN.');
           return rBody;
         }
-        // Stop paying for a fast path this unit refuses. The re-send is cheap
-        // insurance rather than a rescue: MELView delivers on the unit's own
-        // poll whether or not a token was issued, and re-stating the same
-        // target values is idempotent.
-        this.localFastPathRetryAt.set(unitID, Date.now() + LOCAL_FASTPATH_COOLDOWN_MS);
-        this.log.warn('Could not reach unit', unitID,
-          'over the LAN - leaving this command to MELView, which is slower.',
-          `The local fast path pauses for ${Math.round(LOCAL_FASTPATH_COOLDOWN_MS / 60000)} minutes.`);
+        // Stop paying for a fast path this unit will not serve. A refusal is
+        // final, so stand down until the bridge restarts rather than asking
+        // again every quarter of an hour.
+        if (outcome === 'refused') {
+          this.localFastPathRetryAt.set(unitID, Number.POSITIVE_INFINITY);
+          this.log.warn('Unit', unitID, 'refuses local commands, so they will go through MELView',
+            'from now on, which is slower. A unit on a different subnet from Homebridge',
+            'commonly refuses them.');
+        } else {
+          this.localFastPathRetryAt.set(unitID, Date.now() + LOCAL_FASTPATH_COOLDOWN_MS);
+          this.log.warn('Could not reach unit', unitID,
+            'over the LAN - leaving this command to MELView, which is slower.',
+            `The local fast path pauses for ${Math.round(LOCAL_FASTPATH_COOLDOWN_MS / 60000)} minutes.`);
+        }
+        // The re-send is cheap insurance rather than a rescue: MELView delivers
+        // on the unit's own poll whether or not a token was issued, and
+        // re-stating the same target values is idempotent.
         const resent = await this.postCommand(unitID, allComms, false);
         this.logCloudAccepted(unitID, allComms);
         return resent;
@@ -436,13 +455,13 @@ export class MelviewService {
      * The caller needs the outcome to know whether to keep trying this unit:
      * some adaptors refuse the endpoint permanently.
      *
-     * @returns whether the unit took the command.
+     * @returns how the unit answered.
      */
-    private async dispatchLocalCommand(command: Command, key: string): Promise<boolean> {
+    private async dispatchLocalCommand(command: Command, key: string): Promise<LocalDispatch> {
       const url = command.getLocalCommandURL();
       if (!url) {
         this.log.debug('No LAN address known for unit', command.getUnitID(), '- skipping the direct request.');
-        return false;
+        return 'unreachable';
       }
       try {
         const response = await this.post(url, {
@@ -451,17 +470,17 @@ export class MelviewService {
           timeoutMs: LOCAL_TIMEOUT_MS,
         });
         const {body, truncated} = await readBodyBestEffort(response);
+        // A rejection is an answer, not a failure to reach: the adaptor knows
+        // the endpoint and declines to serve it. Observed on a MAC-568IF-E,
+        // which answers 403 on /smart while unknown paths get a plain 404.
+        if (response.status === 401 || response.status === 403) {
+          this.log.warn('Unit', command.getUnitID(), 'refused the local command at', url,
+            `- HTTP ${response.status} ${response.statusText}${body ? `: ${excerpt(body)}` : ''}.`);
+          return 'refused';
+        }
         if (!response.ok) {
-          // An HTTP rejection means something at that address answered and
-          // refused, which a unit you cannot route to would not do. Say so:
-          // on a segmented network it is usually a firewall in the path or a
-          // different device holding that IP, not the unit.
-          const hint = response.status === 401 || response.status === 403
-            ? ' (something at that address answered and refused - on a segmented network this is' +
-              ' usually a firewall in the path or another device on that IP, not the unit)'
-            : '';
           throw new Error(`the unit at ${url} returned HTTP ${response.status} ${response.statusText}` +
-            `${body ? `: ${excerpt(body)}` : ''}${hint}`);
+            `${body ? `: ${excerpt(body)}` : ''}`);
         }
         // The Wi-Fi adapter hangs up as soon as it has answered, often before
         // finishing the body it announced, which undici reports as 'terminated'.
@@ -473,11 +492,11 @@ export class MelviewService {
         } else {
           this.log.debug('Successfully processed local request:', body);
         }
-        return true;
+        return 'delivered';
       } catch (e) {
         this.log.warn('Unable to access unit', command.getUnitID(),
           'via direct LAN interface:', describeRequestFailure(e));
-        return false;
+        return 'unreachable';
       }
     }
 
