@@ -1,6 +1,11 @@
 name: Build, Lint and Test
 
-on: [push, pull_request]
+# workflow_dispatch gives a way to run CI on demand - useful on a fork,
+# where workflows stay dormant until Actions is enabled by hand.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
