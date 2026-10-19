@@ -87,5 +87,7 @@ A fresh `npm ci --ignore-scripts` in a temporary checkout also passes all 72
 tests, ESLint, and TypeScript compilation. ESLint now covers `test/` as well as
 `src/` and reports no warnings. `npm audit --omit=dev` reports zero
 vulnerabilities, as does `npm audit` with development dependencies
-included. The declared Node 22 target remains covered by the
-repository's CI matrix, but was not run locally during this review.
+included. The Node 22 target is now confirmed by an actual CI run: the
+repository's first, triggered manually, passed lint, build, and all 72 tests
+on both Node 22.x and 24.x. Workflows had never run here before, because a
+fork keeps them dormant until Actions is enabled by hand.
