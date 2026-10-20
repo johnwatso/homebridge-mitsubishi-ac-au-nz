@@ -221,3 +221,56 @@ test('startup names where the LAN fast path will aim', () => {
     assert.ok(infos.some(i => i.includes('no local address reported')),
         `missing address not reported: ${JSON.stringify(infos)}`);
 });
+
+test('a state push does not loop back into MELView commands', async () => {
+    const calls: string[] = [];
+    const pushed: Record<string, unknown> = {};
+    const p = platform(async (first, ...rest) => {
+        calls.push([first, ...rest].map(command => command.execute()).join(','));
+        return {error: 'ok', lc: ''} as CommandResponse;
+    });
+    // Capture what the plugin writes into Matter, so the echo can be replayed
+    // exactly as Homebridge's behaviours replay it from the $Changed events.
+    (p.api.matter as unknown as {
+        updateAccessoryState: (u: string, c: string, a: Record<string, unknown>) => Promise<void>;
+    }).updateAccessoryState = async (_uuid, _cluster, attributes) => {
+        Object.assign(pushed, attributes);
+    };
+
+    const controller = new MelviewMatterAccessory(p, device());
+    const accessory: MatterAccessory = controller.buildAccessories()[0];
+    await controller.pushState();
+
+    const onOff = accessory.handlers!.onOff!;
+    await Promise.resolve(pushed.onOff ? onOff.on!(undefined) : onOff.off!(undefined));
+    await Promise.resolve(accessory.handlers!.thermostat!.systemModeChange!(
+        {systemMode: pushed.systemMode as number}));
+    await Promise.resolve(accessory.handlers!.fanControl!.percentSettingChange!(
+        {percentSetting: pushed.percentSetting as number}));
+    await Promise.resolve(accessory.handlers!.fanControl!.fanModeChange!(
+        {fanMode: pushed.fanMode as number}));
+    await new Promise(resolve => setImmediate(resolve));
+
+    // Homebridge's Matter behaviours react to attribute $Changed events, which
+    // fire for the plugin's own writes. Acting on them would command MELView
+    // several times a second, for ever.
+    assert.deepEqual(calls, [], `a push was echoed back as commands: ${JSON.stringify(calls)}`);
+});
+
+test('a real change is still obeyed after an echo is ignored', async () => {
+    const calls: string[] = [];
+    const p = platform(async (first, ...rest) => {
+        calls.push([first, ...rest].map(command => command.execute()).join(','));
+        return {error: 'ok', lc: ''} as CommandResponse;
+    });
+    const controller = new MelviewMatterAccessory(p, device());
+    const accessory: MatterAccessory = controller.buildAccessories()[0];
+
+    // The unit is off, so an echoed "off" is suppressed - but a genuine "on"
+    // straight afterwards must still reach MELView.
+    await Promise.resolve(accessory.handlers!.onOff!.off!(undefined));
+    await Promise.resolve(accessory.handlers!.onOff!.on!(undefined));
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.deepEqual(calls, ['PW1']);
+});

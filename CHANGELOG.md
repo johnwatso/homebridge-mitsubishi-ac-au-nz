@@ -3,6 +3,28 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] - 2026-10-20
+
+### Fixed
+- **An unbounded command loop against MELView.** Homebridge's Matter behaviours
+  react to attribute `$Changed` events, and those fire for this plugin's own
+  `updateAccessoryState` writes exactly as they do for a controller's. So
+  pushing state called the change handlers, each handler sent a command, and
+  the command pushed state again: `PW0`, `PW1,MD3`, `PW1,MD1`, round and round
+  at ten to twenty MELView calls a second, indefinitely. A single state push
+  echoed back as three commands.
+
+  The plugin now records what it pushes and refuses to turn a matching change
+  into a command. The match is consumed, one write earning one suppression, and
+  a real request clears any outstanding expectation, so a quick on-then-off is
+  still obeyed in full.
+
+  This loop predates 1.5.3 and is very likely the cause of the sluggishness
+  reported against earlier versions: genuine commands queued behind hundreds of
+  spurious ones, and the unit was being told to switch mode and power
+  continuously. It went unnoticed because accepted commands were not logged
+  above debug level until 1.5.3 made them visible.
+
 ## [1.5.3] - 2026-10-20
 
 ### Added
@@ -235,6 +257,7 @@ Not published to npm. See the
 and [what changed vs the original](docs/modernization.md) for the fork's
 Homebridge 2.0 modernisation and the HAP→Matter migration.
 
+[1.5.4]: https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases/tag/v1.5.4
 [1.5.3]: https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases/tag/v1.5.3
 [1.5.2]: https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases/tag/v1.5.2
 [1.5.1]: https://github.com/johnwatso/homebridge-mitsubishi-ac-au-nz/releases/tag/v1.5.1

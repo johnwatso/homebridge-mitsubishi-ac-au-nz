@@ -141,6 +141,10 @@ export class MelviewMatterAccessory {
     // ---- Descriptor builders -------------------------------------------------
 
     private buildAcAccessory(): MatterAccessory {
+        const onOff = {onOff: this.state.power === 1};
+        const thermostat = this.thermostatState(true);
+        const fanControl = this.fanState();
+        this.recordPushed(onOff, thermostat, fanControl);
         return {
             UUID: this.acUuid,
             displayName: this.displayName,
@@ -150,11 +154,11 @@ export class MelviewMatterAccessory {
             model: this.device.capabilities?.adaptortype ?? 'Mitsubishi AC',
             context: {unitid: this.device.unitid},
             clusters: {
-                onOff: {onOff: this.state.power === 1},
+                onOff,
                 // Spread so the typed cluster states satisfy the descriptor's
                 // index-signature fallback; the helpers themselves stay strict.
-                thermostat: {...this.thermostatState(true)},
-                fanControl: {...this.fanState()},
+                thermostat: {...thermostat},
+                fanControl: {...fanControl},
                 // Declaring cumulativeEnergyImported is what makes Homebridge add the
                 // ElectricalEnergyMeasurement cluster (Imported + Cumulative features).
                 ...(this.energyStore ?
@@ -162,20 +166,27 @@ export class MelviewMatterAccessory {
             },
             handlers: {
                 onOff: {
-                    on: () => this.command(new CommandPower(1, this.device, this.platform)),
-                    off: () => this.command(new CommandPower(0, this.device, this.platform)),
+                    on: () => this.isEcho('onOff', true) ? undefined :
+                        this.command(new CommandPower(1, this.device, this.platform)),
+                    off: () => this.isEcho('onOff', false) ? undefined :
+                        this.command(new CommandPower(0, this.device, this.platform)),
                 },
                 thermostat: {
-                    systemModeChange: (a: {systemMode: number}) => this.applySystemMode(a.systemMode),
+                    systemModeChange: (a: {systemMode: number}) =>
+                        this.isEcho('systemMode', a.systemMode) ? undefined : this.applySystemMode(a.systemMode),
                     occupiedCoolingSetpointChange: (a: {occupiedCoolingSetpoint: number}) =>
-                        this.applySetpoint(a.occupiedCoolingSetpoint, WorkMode.COOL),
+                        this.isEcho('occupiedCoolingSetpoint', a.occupiedCoolingSetpoint) ? undefined :
+                            this.applySetpoint(a.occupiedCoolingSetpoint, WorkMode.COOL),
                     occupiedHeatingSetpointChange: (a: {occupiedHeatingSetpoint: number}) =>
-                        this.applySetpoint(a.occupiedHeatingSetpoint, WorkMode.HEAT),
+                        this.isEcho('occupiedHeatingSetpoint', a.occupiedHeatingSetpoint) ? undefined :
+                            this.applySetpoint(a.occupiedHeatingSetpoint, WorkMode.HEAT),
                 },
                 fanControl: {
                     percentSettingChange: (a: {percentSetting: number | null}) =>
-                        this.applyFanPercent(a.percentSetting),
-                    fanModeChange: (a: {fanMode: number}) => this.applyFanMode(a.fanMode),
+                        this.isEcho('percentSetting', a.percentSetting) ? undefined :
+                            this.applyFanPercent(a.percentSetting),
+                    fanModeChange: (a: {fanMode: number}) =>
+                        this.isEcho('fanMode', a.fanMode) ? undefined : this.applyFanMode(a.fanMode),
                 },
             },
         };
@@ -196,6 +207,46 @@ export class MelviewMatterAccessory {
         };
     }
 
+    /**
+     * Cluster values this plugin last pushed into Matter.
+     *
+     * Homebridge's Matter behaviours react to attribute `$Changed` events (see
+     * `ThermostatBehavior.initialize`), and those fire for this plugin's own
+     * `updateAccessoryState` writes exactly as they do for a controller's. Left
+     * unguarded, pushing state calls the change handlers, each handler sends a
+     * command, and the command pushes state again - an unbounded command loop
+     * against MELView, several calls a second.
+     *
+     * A change equal to what was just pushed is therefore this plugin's own
+     * echo and must not become a command. Dropping it costs nothing: a genuine
+     * request for a value the unit already holds is a no-op, and every poll
+     * refreshes these values from the unit's real state.
+     */
+    private lastPushed: Record<string, unknown> = {};
+
+    /** Remember pushed values before the push, since the events fire during it. */
+    private recordPushed(...states: object[]): void {
+        Object.assign(this.lastPushed, ...states);
+    }
+
+    /**
+     * Whether this change is the plugin's own echo rather than a real request.
+     *
+     * A push produces at most one `$Changed` event per attribute it alters, so
+     * the match is consumed: one write earns one suppression. That matters for
+     * a rapid genuine toggle - without consuming, a pushed `off` would go on
+     * swallowing every later request to turn off.
+     */
+    private isEcho(attribute: string, value: unknown): boolean {
+        if (!(attribute in this.lastPushed) || this.lastPushed[attribute] !== value) {
+            return false;
+        }
+        delete this.lastPushed[attribute];
+        this.platform.log.debug('Ignoring echoed', attribute, '=', String(value),
+            'for', this.device.room, '- this plugin pushed it.');
+        return true;
+    }
+
     // ---- Home -> device handlers --------------------------------------------
 
     private command(...commands: [Command, ...Command[]]): Promise<void> {
@@ -207,6 +258,11 @@ export class MelviewMatterAccessory {
      * have been sent, so it can read the state they left behind.
      */
     private queueCommands(build: () => [Command, ...Command[]]): Promise<void> {
+        // A real request makes every outstanding echo expectation stale: the
+        // state it was recorded from is about to change. Without this, a quick
+        // on-then-off would see the second change swallowed as an echo of the
+        // state the unit held before the first.
+        this.lastPushed = {};
         this.pendingCommands++;
         this.commandRevision++;
         const task = this.commandQueue.then(() => this.executeCommand(build()))
@@ -304,10 +360,15 @@ export class MelviewMatterAccessory {
     }
 
     private async pushAcState(): Promise<void> {
+        const onOff = {onOff: this.state.power === 1};
+        const thermostat = this.thermostatState(false);
+        const fanControl = this.fanState();
+        // Before the first push: the change events fire while these run.
+        this.recordPushed(onOff, thermostat, fanControl);
         try {
-            await this.matter.updateAccessoryState(this.acUuid, 'onOff', {onOff: this.state.power === 1});
-            await this.matter.updateAccessoryState(this.acUuid, 'thermostat', this.thermostatState(false));
-            await this.matter.updateAccessoryState(this.acUuid, 'fanControl', this.fanState());
+            await this.matter.updateAccessoryState(this.acUuid, 'onOff', onOff);
+            await this.matter.updateAccessoryState(this.acUuid, 'thermostat', thermostat);
+            await this.matter.updateAccessoryState(this.acUuid, 'fanControl', fanControl);
         } catch (e) {
             this.platform.log.debug('Failed to push Matter state for', this.device.room, String(e));
         }
